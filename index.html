@@ -1,0 +1,67 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Road to Riccione</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+  <main class="container">
+    <section class="hero card">
+      <div>
+        <p class="eyebrow">Road to Riccione</p>
+        <h1>Campionati Italiani U14</h1>
+        <p class="subtitle">Inserisci il tuo link personale oppure il tuo codice atleta per vedere il percorso verso Riccione.</p>
+      </div>
+      <div class="hero-meta">
+        <div class="meta-box">
+          <span>Punti massimi</span>
+          <strong>360</strong>
+        </div>
+        <div class="meta-box accent">
+          <span>Soglia qualificazione</span>
+          <strong>252</strong>
+        </div>
+      </div>
+    </section>
+
+    <section class="card form-card">
+      <div class="timeline-header">
+        <h3>Apri il tuo percorso</h3>
+        <p>Ogni atleta può ricevere un link personale, ad esempio <strong>athlete.html?slug=mario-rossi</strong>.</p>
+      </div>
+      <form id="lookupForm" class="lookup-row">
+        <div>
+          <label for="slugInput">Codice atleta / slug</label>
+          <input id="slugInput" type="text" placeholder="es. mario-rossi" autocomplete="off" />
+        </div>
+        <div class="lookup-button-wrap">
+          <button type="submit" class="primary-btn">Apri dashboard</button>
+        </div>
+      </form>
+      <p class="status-text" id="lookupStatus">Se hai ricevuto un link personale, aprilo direttamente.</p>
+    </section>
+
+    <section class="footer-note">
+      <p>Area tecnica riservata allo staff. Gli atleti vedono solo il proprio percorso.</p>
+    </section>
+  </main>
+
+  <script>
+    document.getElementById('lookupForm').addEventListener('submit', (e) => {
+      e.preventDefault();
+      const slug = document.getElementById('slugInput').value.trim().toLowerCase();
+      if (!slug) {
+        document.getElementById('lookupStatus').textContent = 'Inserisci un codice atleta valido.';
+        return;
+      }
+      window.location.href = `athlete.html?slug=${encodeURIComponent(slug)}`;
+    });
+  </script>
+</body>
+</html>

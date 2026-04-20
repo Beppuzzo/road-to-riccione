@@ -1,0 +1,426 @@
+import { auth, db } from './firebase-config.js';
+import {
+  signInWithEmailAndPassword,
+  signOut,
+  onAuthStateChanged
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-auth.js";
+
+import {
+  collection,
+  addDoc,
+  getDocs,
+  query,
+  orderBy,
+  where,
+  setDoc,
+  doc,
+  serverTimestamp
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const STAGES = [
+  '2026-04-16',
+  '2026-04-17',
+  '2026-04-19',
+  '2026-04-20',
+  '2026-04-22',
+  '2026-04-24',
+  '2026-04-27',
+  '2026-04-29',
+  '2026-05-04'
+];
+
+const MAX_TOTAL_POINTS = 360;
+const TARGET_POINTS = 252;
+
+const authCard = document.getElementById('authCard');
+const adminApp = document.getElementById('adminApp');
+const loginForm = document.getElementById('loginForm');
+const authMessage = document.getElementById('authMessage');
+const logoutBtn = document.getElementById('logoutBtn');
+const refreshAthletesBtn = document.getElementById('refreshAthletes');
+const sessionInfo = document.getElementById('sessionInfo');
+
+const athleteForm = document.getElementById('athleteForm');
+const athleteMessage = document.getElementById('athleteMessage');
+const athletesList = document.getElementById('athletesList');
+
+const adminAthlete = document.getElementById('adminAthlete');
+const sessionDate = document.getElementById('sessionDate');
+const scoreForm = document.getElementById('scoreForm');
+const adminMessage = document.getElementById('adminMessage');
+const adminScores = document.getElementById('adminScores');
+
+let athletesCache = [];
+let adminBooted = false;
+
+function sessionTotal(score) {
+  return (
+    Number(score.attendance_points || 0) +
+    Number(score.application_points || 0) +
+    Number(score.technical_points || 0) +
+    Number(score.resilience_points || 0)
+  );
+}
+
+function labelDate(dateStr) {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+}
+
+function slugify(value) {
+  return value
+    .toLowerCase()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/[^a-z0-9]+/g, '-')
+    .replace(/(^-|-$)/g, '');
+}
+
+function buildStageTotals(scores = []) {
+  return STAGES.reduce((acc, date) => {
+    const score = scores.find((item) => item.session_date === date);
+    acc[date] = score ? sessionTotal(score) : 0;
+    return acc;
+  }, {});
+}
+
+function setAuthenticatedUI(user) {
+  authCard?.classList.add('hidden');
+  adminApp?.classList.remove('hidden');
+  if (sessionInfo) {
+    sessionInfo.textContent = `Sessione attiva: ${user.email}`;
+  }
+}
+
+function setLoggedOutUI() {
+  authCard?.classList.remove('hidden');
+  adminApp?.classList.add('hidden');
+  if (authMessage) authMessage.textContent = '';
+  if (sessionInfo) sessionInfo.textContent = '';
+}
+
+function loadStageOptions() {
+  if (!sessionDate) return;
+  sessionDate.innerHTML =
+    '<option value="">Seleziona data</option>' +
+    STAGES.map(date => `<option value="${date}">${labelDate(date)}</option>`).join('');
+}
+
+async function loadScoresByAthleteId(athleteId) {
+  const scoresRef = collection(db, 'scores');
+  const q = query(
+    scoresRef,
+    where('athlete_id', '==', athleteId),
+    orderBy('session_date', 'desc')
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data()
+  }));
+}
+
+async function syncPublicProgressForAthlete(athlete) {
+  if (!athlete?.slug || !athlete?.id) return;
+
+  const scores = await loadScoresByAthleteId(athlete.id);
+  const totalPoints = scores.reduce((acc, item) => acc + sessionTotal(item), 0);
+  const percent = Math.round((totalPoints / MAX_TOTAL_POINTS) * 100);
+
+  await setDoc(doc(db, 'public_progress', athlete.slug), {
+    athlete_id: athlete.id,
+    slug: athlete.slug,
+    full_name: athlete.full_name,
+    is_active: athlete.is_active !== false,
+    total_points: totalPoints,
+    percent,
+    target_points: TARGET_POINTS,
+    max_total_points: MAX_TOTAL_POINTS,
+    qualified: totalPoints >= TARGET_POINTS,
+    stage_totals: buildStageTotals(scores),
+    updated_at: serverTimestamp()
+  }, { merge: true });
+}
+
+async function syncAllPublicProgress() {
+  for (const athlete of athletesCache) {
+    await syncPublicProgressForAthlete(athlete);
+  }
+}
+
+async function bootAdmin() {
+  if (adminBooted) return;
+  adminBooted = true;
+
+  loadStageOptions();
+  await loadAthletes();
+  await syncAllPublicProgress();
+  await loadScores();
+}
+
+async function loadAthletes() {
+  try {
+    const athletesRef = collection(db, 'athletes');
+    const q = query(athletesRef, orderBy('full_name', 'asc'));
+    const snapshot = await getDocs(q);
+
+    athletesCache = snapshot.docs.map(docSnap => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+
+    if (adminAthlete) {
+      adminAthlete.innerHTML =
+        '<option value="">Seleziona atleta</option>' +
+        athletesCache
+          .map(a => `<option value="${a.id}">${a.full_name}</option>`)
+          .join('');
+    }
+
+    if (athletesList) {
+      athletesList.innerHTML = athletesCache.length
+        ? athletesCache.map(a => `
+          <div class="score-card">
+            <strong>${a.full_name}</strong>
+            <div class="score-line">Slug: ${a.slug}</div>
+            <div class="score-line">
+              Link personale:
+              <a href="athlete.html?slug=${encodeURIComponent(a.slug)}" target="_blank" rel="noopener noreferrer">
+                athlete.html?slug=${a.slug}
+              </a>
+            </div>
+          </div>
+        `).join('')
+        : '<p class="status-text">Nessun atleta registrato.</p>';
+    }
+
+    if (athleteMessage) athleteMessage.textContent = '';
+  } catch (error) {
+    console.error(error);
+    if (athleteMessage) {
+      athleteMessage.textContent = 'Errore nel caricamento atleti.';
+    }
+  }
+}
+
+async function loadScores() {
+  const athleteId = adminAthlete?.value;
+
+  if (!athleteId) {
+    if (adminScores) {
+      adminScores.innerHTML = '<p class="status-text">Seleziona un atleta per vedere le valutazioni.</p>';
+    }
+    return;
+  }
+
+  try {
+    const data = await loadScoresByAthleteId(athleteId);
+
+    if (!data.length) {
+      adminScores.innerHTML = '<p class="status-text">Nessuna valutazione registrata.</p>';
+      return;
+    }
+
+    adminScores.innerHTML = data.map(item => `
+      <div class="score-card">
+        <strong>${labelDate(item.session_date)} · ${sessionTotal(item)} / 40 punti</strong>
+        <div class="score-line">
+          Presenza: ${item.attendance_points} ·
+          Applicazione: ${item.application_points} ·
+          Tecnico-tattico: ${item.technical_points} ·
+          Resilienza: ${item.resilience_points}
+        </div>
+        <div class="score-line">${item.notes || 'Nessuna nota'}</div>
+      </div>
+    `).join('');
+
+    if (adminMessage) adminMessage.textContent = '';
+  } catch (error) {
+    console.error(error);
+    if (adminMessage) {
+      adminMessage.textContent = 'Errore nel caricamento valutazioni.';
+    }
+  }
+}
+
+loginForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (authMessage) authMessage.textContent = 'Accesso in corso...';
+
+  const email = document.getElementById('email')?.value.trim();
+  const password = document.getElementById('password')?.value;
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    if (authMessage) authMessage.textContent = 'Accesso effettuato.';
+  } catch (error) {
+    console.error(error);
+    if (authMessage) {
+      authMessage.textContent = 'Login non riuscito. Controlla email e password.';
+    }
+  }
+});
+
+logoutBtn?.addEventListener('click', async () => {
+  try {
+    await signOut(auth);
+    setLoggedOutUI();
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+refreshAthletesBtn?.addEventListener('click', async () => {
+  await loadAthletes();
+  await syncAllPublicProgress();
+  await loadScores();
+});
+
+athleteForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const fullName = document.getElementById('fullName')?.value.trim();
+  const slugInput = document.getElementById('slug');
+  const slug = slugify(slugInput?.value.trim() || fullName || '');
+
+  if (slugInput) slugInput.value = slug;
+
+  if (!fullName || !slug) {
+    if (athleteMessage) {
+      athleteMessage.textContent = 'Inserisci nome atleta e slug valido.';
+    }
+    return;
+  }
+
+  try {
+    const athletesRef = collection(db, 'athletes');
+
+    const slugQuery = query(athletesRef, where('slug', '==', slug));
+    const slugSnapshot = await getDocs(slugQuery);
+
+    if (!slugSnapshot.empty) {
+      athleteMessage.textContent = 'Slug già usato. Scegline uno diverso.';
+      return;
+    }
+
+    const athleteDoc = await addDoc(athletesRef, {
+      full_name: fullName,
+      slug,
+      is_active: true,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
+
+    await setDoc(doc(db, 'public_progress', slug), {
+      athlete_id: athleteDoc.id,
+      slug,
+      full_name: fullName,
+      is_active: true,
+      total_points: 0,
+      percent: 0,
+      target_points: TARGET_POINTS,
+      max_total_points: MAX_TOTAL_POINTS,
+      qualified: false,
+      stage_totals: STAGES.reduce((acc, date) => {
+        acc[date] = 0;
+        return acc;
+      }, {}),
+      updated_at: serverTimestamp()
+    });
+
+    athleteMessage.textContent = `Atleta salvato. Link personale: athlete.html?slug=${slug}`;
+    athleteForm.reset();
+
+    const slugField = document.getElementById('slug');
+    if (slugField) delete slugField.dataset.touched;
+
+    await loadAthletes();
+  } catch (error) {
+    console.error(error);
+    athleteMessage.textContent = 'Errore durante il salvataggio atleta.';
+  }
+});
+
+adminAthlete?.addEventListener('change', loadScores);
+
+document.getElementById('fullName')?.addEventListener('input', (e) => {
+  const currentSlug = document.getElementById('slug');
+  if (currentSlug && !currentSlug.dataset.touched) {
+    currentSlug.value = slugify(e.target.value);
+  }
+});
+
+document.getElementById('slug')?.addEventListener('input', (e) => {
+  e.target.dataset.touched = 'true';
+  e.target.value = slugify(e.target.value);
+});
+
+scoreForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const payload = {
+    athlete_id: adminAthlete?.value || '',
+    session_date: sessionDate?.value || '',
+    attendance_points: Number(document.getElementById('attendance')?.value || 0),
+    application_points: Number(document.getElementById('application')?.value || 0),
+    technical_points: Number(document.getElementById('technical')?.value || 0),
+    resilience_points: Number(document.getElementById('resilience')?.value || 0),
+    notes: document.getElementById('notes')?.value.trim() || '',
+    updated_at: serverTimestamp()
+  };
+
+  if (!payload.athlete_id || !payload.session_date) {
+    if (adminMessage) adminMessage.textContent = 'Seleziona atleta e data.';
+    return;
+  }
+
+  try {
+    const docId = `${payload.athlete_id}_${payload.session_date}`;
+
+    await setDoc(doc(db, 'scores', docId), {
+      ...payload,
+      created_at: serverTimestamp()
+    }, { merge: true });
+
+    const athlete = athletesCache.find((item) => item.id === payload.athlete_id);
+    if (athlete) {
+      await syncPublicProgressForAthlete(athlete);
+    }
+
+    if (adminMessage) {
+      adminMessage.textContent = 'Valutazione salvata correttamente.';
+    }
+
+    scoreForm.reset();
+
+    const attendance = document.getElementById('attendance');
+    const application = document.getElementById('application');
+    const technical = document.getElementById('technical');
+    const resilience = document.getElementById('resilience');
+
+    if (attendance) attendance.value = 10;
+    if (application) application.value = 6;
+    if (technical) technical.value = 6;
+    if (resilience) resilience.value = 6;
+    if (adminAthlete) adminAthlete.value = payload.athlete_id;
+    if (sessionDate) sessionDate.value = payload.session_date;
+
+    await loadScores();
+  } catch (error) {
+    console.error(error);
+    if (adminMessage) {
+      adminMessage.textContent = 'Errore durante il salvataggio.';
+    }
+  }
+});
+
+onAuthStateChanged(auth, async (user) => {
+  if (user) {
+    setAuthenticatedUI(user);
+    await bootAdmin();
+  } else {
+    adminBooted = false;
+    setLoggedOutUI();
+  }
+});

@@ -1,0 +1,97 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Atleta | Road to Riccione</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <div class="bg-glow"></div>
+
+  <main class="container">
+    <section class="hero card">
+      <div>
+        <p class="eyebrow">Road to Riccione</p>
+        <h1>Campionati Italiani U14</h1>
+        <p class="subtitle">Percorso di valutazione dal 16 aprile al 6 maggio 2026.</p>
+      </div>
+
+      <div class="hero-meta">
+        <div class="meta-box">
+          <span>Punti massimi</span>
+          <strong>360</strong>
+        </div>
+        <div class="meta-box accent">
+          <span>Soglia qualificazione</span>
+          <strong>252</strong>
+        </div>
+      </div>
+    </section>
+
+    <section id="dashboard" class="dashboard">
+      <section class="card summary">
+        <div>
+          <p class="eyebrow">Atleta</p>
+          <h2 id="athleteName">-</h2>
+          <p id="qualificationBadge" class="badge neutral">In corsa</p>
+        </div>
+
+        <div class="summary-stats">
+          <div>
+            <span>Punti attuali</span>
+            <strong id="currentPoints">0</strong>
+          </div>
+          <div>
+            <span>Percentuale</span>
+            <strong id="currentPercent">0%</strong>
+          </div>
+          <div>
+            <span>Mancano alla soglia</span>
+            <strong id="missingToTarget">252</strong>
+          </div>
+        </div>
+      </section>
+
+      <section class="card progress-section">
+        <div class="progress-header">
+          <h3>Avanzamento verso Riccione</h3>
+          <span id="progressLabel">0 / 360 punti</span>
+        </div>
+
+        <div class="progress-wrap">
+          <div class="progress-bar">
+            <div id="progressFill" class="progress-fill"></div>
+            <div class="target-marker" style="left: 70%;"></div>
+          </div>
+          <div class="progress-scale">
+            <span>0</span>
+            <span>Soglia 252</span>
+            <span>360</span>
+          </div>
+        </div>
+      </section>
+
+      <section class="timeline-section">
+        <div class="timeline-header">
+          <h3>Le tappe del percorso</h3>
+          <p>Ogni tappa assegna fino a 40 punti.</p>
+        </div>
+        <div id="timeline" class="timeline"></div>
+      </section>
+    </section>
+
+    <section class="card form-card hidden" id="emptyState">
+      <div class="timeline-header">
+        <h3>Percorso non disponibile</h3>
+        <p id="statusText">Controlla il link oppure chiedi allo staff il tuo link personale.</p>
+      </div>
+    </section>
+  </main>
+
+  <script type="module" src="app.js"></script>
+</body>
+</html>

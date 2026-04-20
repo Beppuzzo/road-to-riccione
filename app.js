@@ -1,0 +1,129 @@
+import { db } from './firebase-config.js';
+import {
+  doc,
+  getDoc
+} from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
+
+const MAX_TOTAL_POINTS = 360;
+const TARGET_POINTS = 252;
+const STAGES = [
+  '2026-04-16',
+  '2026-04-17',
+  '2026-04-19',
+  '2026-04-20',
+  '2026-04-22',
+  '2026-04-24',
+  '2026-04-27',
+  '2026-04-29',
+  '2026-05-04'
+];
+
+const dashboard = document.getElementById('dashboard');
+const athleteNameEl = document.getElementById('athleteName');
+const qualificationBadge = document.getElementById('qualificationBadge');
+const currentPointsEl = document.getElementById('currentPoints');
+const currentPercentEl = document.getElementById('currentPercent');
+const missingToTargetEl = document.getElementById('missingToTarget');
+const progressFill = document.getElementById('progressFill');
+const progressLabel = document.getElementById('progressLabel');
+const timelineEl = document.getElementById('timeline');
+const emptyState = document.getElementById('emptyState');
+const statusText = document.getElementById('statusText');
+
+function formatStage(dateStr) {
+  const [, month, day] = dateStr.split('-');
+  return `${day}/${month}`;
+}
+
+function getBadge(points) {
+  if (points >= TARGET_POINTS) return { text: 'Qualificato', cls: 'success' };
+  if (points >= TARGET_POINTS * 0.85) return { text: 'Vicino all’obiettivo', cls: 'warning' };
+  return { text: 'In corsa', cls: 'neutral' };
+}
+
+function getSlugFromUrl() {
+  const params = new URLSearchParams(window.location.search);
+  return params.get('slug')?.trim().toLowerCase() || '';
+}
+
+function showEmpty(message) {
+  dashboard?.classList.add('hidden');
+  emptyState?.classList.remove('hidden');
+  if (statusText) statusText.textContent = message;
+}
+
+async function loadPublicProgress(slug) {
+  const publicRef = doc(db, 'public_progress', slug);
+  const snapshot = await getDoc(publicRef);
+
+  if (!snapshot.exists()) {
+    return null;
+  }
+
+  return snapshot.data();
+}
+
+function renderTimeline(stageTotals = {}) {
+  timelineEl.innerHTML = STAGES.map((date) => {
+    const total = Number(stageTotals[date] || 0);
+
+    if (!total) {
+      return `
+        <article class="stage pending">
+          <div class="stage-date">${formatStage(date)}</div>
+          <div class="stage-status">Tappa non ancora valutata</div>
+          <div class="stage-points">0 / 40 punti</div>
+        </article>
+      `;
+    }
+
+    return `
+      <article class="stage completed">
+        <div class="stage-date">${formatStage(date)}</div>
+        <div class="stage-status">Valutazione completata</div>
+        <div class="stage-points">${total} / 40 punti</div>
+      </article>
+    `;
+  }).join('');
+}
+
+async function loadAthleteDashboard(slug) {
+  try {
+    const progress = await loadPublicProgress(slug);
+
+    if (!progress || !progress.is_active) {
+      showEmpty('Percorso non trovato. Controlla il link personale o chiedi allo staff.');
+      return;
+    }
+
+    const totalPoints = Number(progress.total_points || 0);
+    const percent = Number(progress.percent || 0);
+    const missing = Math.max(TARGET_POINTS - totalPoints, 0);
+    const badge = getBadge(totalPoints);
+
+    athleteNameEl.textContent = progress.full_name || '-';
+    qualificationBadge.textContent = badge.text;
+    qualificationBadge.className = `badge ${badge.cls}`;
+    currentPointsEl.textContent = totalPoints;
+    currentPercentEl.textContent = `${percent}%`;
+    missingToTargetEl.textContent = missing;
+    progressFill.style.width = `${Math.min(percent, 100)}%`;
+    progressLabel.textContent = `${totalPoints} / ${MAX_TOTAL_POINTS} punti`;
+
+    renderTimeline(progress.stage_totals || {});
+
+    dashboard?.classList.remove('hidden');
+    emptyState?.classList.add('hidden');
+  } catch (error) {
+    console.error(error);
+    showEmpty('Errore nel caricamento del percorso. Controlla il link personale.');
+  }
+}
+
+const slug = getSlugFromUrl();
+
+if (!slug) {
+  showEmpty('Manca lo slug dell’atleta nel link.');
+} else {
+  loadAthleteDashboard(slug);
+}

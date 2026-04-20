@@ -1,0 +1,146 @@
+<!DOCTYPE html>
+<html lang="it">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Admin | Road to Riccione</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+  <main class="container admin-layout">
+    <section class="hero card">
+      <div>
+        <p class="eyebrow">Pannello tecnico</p>
+        <h1>Inserimento punteggi</h1>
+        <p class="subtitle">Accesso riservato allo staff tecnico.</p>
+      </div>
+      <div class="hero-meta">
+        <div class="meta-box">
+          <span>Area</span>
+          <strong>Privata</strong>
+        </div>
+      </div>
+    </section>
+
+    <section id="authCard" class="card form-card">
+      <div class="timeline-header">
+        <h3>Login staff</h3>
+        <p>Usa email e password configurate in Firebase per accedere all’area tecnica.</p>
+      </div>
+
+      <form id="loginForm" class="form-grid">
+        <div>
+          <label for="email">Email</label>
+          <input id="email" type="email" required autocomplete="username" />
+        </div>
+        <div>
+          <label for="password">Password</label>
+          <input id="password" type="password" required autocomplete="current-password" />
+        </div>
+        <div class="full-width">
+          <button type="submit" class="primary-btn">Accedi</button>
+        </div>
+      </form>
+
+      <p id="authMessage" class="status-text"></p>
+    </section>
+
+    <section id="adminApp" class="hidden">
+      <section class="card form-card admin-toolbar">
+        <div>
+          <strong id="sessionInfo">Sessione attiva</strong>
+          <p class="status-text">Solo lo staff autenticato può leggere e modificare i dati completi.</p>
+        </div>
+        <div class="toolbar-actions">
+          <button id="refreshAthletes" type="button">Aggiorna elenco</button>
+          <button id="logoutBtn" type="button">Esci</button>
+        </div>
+      </section>
+
+      <section class="card form-card">
+        <div class="timeline-header">
+          <h3>Nuovo atleta</h3>
+          <p>Crea l’atleta e genera il link personale da condividere.</p>
+        </div>
+        <form id="athleteForm" class="form-grid">
+          <div>
+            <label for="fullName">Nome atleta</label>
+            <input id="fullName" type="text" required />
+          </div>
+          <div>
+            <label for="slug">Slug pubblico</label>
+            <input id="slug" type="text" placeholder="es. mario-rossi-u14-k7m2" required />
+          </div>
+          <div class="full-width">
+            <button type="submit" class="primary-btn">Salva atleta</button>
+          </div>
+        </form>
+        <p id="athleteMessage" class="status-text"></p>
+      </section>
+
+      <section class="card form-card">
+        <div class="timeline-header">
+          <h3>Inserimento valutazioni</h3>
+          <p>Aggiorna i punteggi e l’avanzamento del percorso verso Riccione.</p>
+        </div>
+        <form id="scoreForm" class="form-grid">
+          <div>
+            <label for="adminAthlete">Atleta</label>
+            <select id="adminAthlete" required></select>
+          </div>
+          <div>
+            <label for="sessionDate">Data allenamento</label>
+            <select id="sessionDate" required></select>
+          </div>
+          <div>
+            <label for="attendance">Presenza</label>
+            <input id="attendance" type="number" min="0" max="10" value="10" required />
+            <small>Usa 10 se presente, 0 se assente.</small>
+          </div>
+          <div>
+            <label for="application">Applicazione e focus</label>
+            <input id="application" type="number" min="2" max="10" value="6" required />
+          </div>
+          <div>
+            <label for="technical">Focus tecnico tattico</label>
+            <input id="technical" type="number" min="2" max="10" value="6" required />
+          </div>
+          <div>
+            <label for="resilience">Resilienza alla fatica</label>
+            <input id="resilience" type="number" min="2" max="10" value="6" required />
+          </div>
+          <div class="full-width">
+            <label for="notes">Note</label>
+            <textarea id="notes" rows="3" placeholder="Osservazioni tecniche o comportamentali"></textarea>
+          </div>
+          <div class="full-width">
+            <button type="submit" class="primary-btn">Salva valutazione</button>
+          </div>
+        </form>
+        <p id="adminMessage" class="status-text"></p>
+      </section>
+
+      <section class="card form-card">
+        <div class="timeline-header">
+          <h3>Atleti registrati</h3>
+          <p>Per ciascun atleta puoi condividere il link personale senza mostrare gli altri.</p>
+        </div>
+        <div id="athletesList" class="admin-scores"></div>
+      </section>
+
+      <section class="card">
+        <div class="timeline-header">
+          <h3>Valutazioni registrate</h3>
+          <p>Ultimi inserimenti per l’atleta selezionato.</p>
+        </div>
+        <div id="adminScores" class="admin-scores"></div>
+      </section>
+    </section>
+  </main>
+
+  <script type="module" src="admin.js"></script>
+</body>
+</html>
