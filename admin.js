@@ -183,18 +183,17 @@ function renderAthletesList() {
     const safePin = escapeHtml(a.pin || '');
     const statusLabel = a.is_active === false ? 'Inattivo' : 'Attivo';
 
+    const parts = (a.full_name || '').split(' ');
+    const lastName = parts[0] || '';
+    const firstName = parts.slice(1).join(' ') || '';
+
     return `
       <div class="score-card" data-athlete-id="${a.id}">
         <strong>${safeName}</strong>
         <div class="score-line">Slug: ${safeSlug}</div>
         <div class="score-line">PIN: ${safePin || 'Non assegnato'}</div>
         <div class="score-line">Stato: ${statusLabel}</div>
-        <div class="score-line">
-          Link personale:
-          <a href="athlete.html?slug=${encodeURIComponent(a.slug || '')}" target="_blank" rel="noopener noreferrer">
-            athlete.html?slug=${safeSlug}
-          </a>
-        </div>
+
         <div class="score-line" style="margin-top:10px;">
           <button type="button" class="edit-athlete-btn" data-athlete-id="${a.id}">
             ${isEditing ? 'Chiudi modifica' : 'Modifica'}
@@ -203,70 +202,42 @@ function renderAthletesList() {
 
         ${isEditing ? `
           <form class="edit-athlete-form" data-athlete-id="${a.id}" style="margin-top:12px;">
+
+            <div class="score-line">
+              Slug: ${safeSlug}
+            </div>
+
             <div class="score-line" style="margin-bottom:8px;">
               <label>
-                Nome atleta<br>
-                <input
-                  type="text"
-                  name="full_name"
-                  value="${safeName}"
-                  required
-                  style="width:100%;margin-top:4px;"
-                >
+                Cognome<br>
+                <input type="text" name="last_name" value="${escapeHtml(lastName)}" required style="width:100%;">
               </label>
             </div>
 
             <div class="score-line" style="margin-bottom:8px;">
               <label>
-                Slug<br>
-                <input
-                  type="text"
-                  name="slug"
-                  value="${safeSlug}"
-                  required
-                  style="width:100%;margin-top:4px;"
-                >
+                Nome<br>
+                <input type="text" name="first_name" value="${escapeHtml(firstName)}" required style="width:100%;">
               </label>
             </div>
 
-            <div class="score-line" style="margin-bottom:8px;">
+            <div class="score-line">
               <label>
                 PIN (8 cifre)<br>
-                <input
-                  type="text"
-                  name="pin"
-                  value="${safePin}"
-                  inputmode="numeric"
-                  maxlength="8"
-                  pattern="\\d{8}"
-                  required
-                  style="width:100%;margin-top:4px;"
-                >
+                <input type="text" name="pin" value="${safePin}" required style="width:100%;">
               </label>
             </div>
 
-            <div class="score-line" style="margin-bottom:8px;">
+            <div class="score-line">
               <label>
-                <input
-                  type="checkbox"
-                  name="is_active"
-                  ${a.is_active === false ? '' : 'checked'}
-                >
+                <input type="checkbox" name="is_active" ${a.is_active === false ? '' : 'checked'}>
                 Atleta attivo
               </label>
             </div>
 
-            <div class="score-line" style="display:flex;gap:8px;flex-wrap:wrap;">
-              <button type="submit">Salva</button>
-              <button type="button" class="generate-pin-btn" data-athlete-id="${a.id}">
-                Genera PIN
-              </button>
-              <button type="button" class="cancel-edit-athlete-btn" data-athlete-id="${a.id}">
-                Annulla
-              </button>
-            </div>
+            <button type="submit">Salva</button>
 
-            <div class="score-line athlete-edit-message" data-athlete-id="${a.id}" style="margin-top:10px;"></div>
+            <div class="athlete-edit-message" data-athlete-id="${a.id}"></div>
           </form>
         ` : ''}
       </div>
@@ -380,44 +351,28 @@ async function slugAlreadyUsed(slug, excludeAthleteId = null) {
 
 async function updateAthleteProfile(athleteId, formData) {
   const athlete = athletesCache.find((item) => item.id === athleteId);
+  if (!athlete) return;
 
-  if (!athlete) {
-    setEditMessage(athleteId, 'Atleta non trovato.', true);
-    return;
-  }
+  const lastName = formData.get('last_name')?.toString().trim() || '';
+  const firstName = formData.get('first_name')?.toString().trim() || '';
 
-  const fullName = formData.get('full_name')?.toString().trim() || '';
-  const rawSlug = formData.get('slug')?.toString().trim() || '';
-  const slug = slugify(rawSlug);
+  const fullName = `${lastName} ${firstName}`;
+  const slug = slugify(fullName);
+
   const pin = formData.get('pin')?.toString().trim() || '';
   const isActive = formData.get('is_active') === 'on';
 
-  const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
-  const slugInput = formEl?.querySelector('input[name="slug"]');
-  const pinInput = formEl?.querySelector('input[name="pin"]');
-
-  if (slugInput) slugInput.value = slug;
-  if (pinInput) pinInput.value = pin.replace(/\D/g, '').slice(0, 8);
-
-  if (!fullName || !slug) {
-    setEditMessage(athleteId, 'Nome atleta e slug sono obbligatori.', true);
+  if (!fullName) {
+    setEditMessage(athleteId, 'Nome non valido', true);
     return;
   }
 
   if (!isValidPin(pin)) {
-    setEditMessage(athleteId, 'Il PIN deve avere esattamente 8 cifre.', true);
+    setEditMessage(athleteId, 'PIN non valido', true);
     return;
   }
 
   try {
-    const slugInUse = await slugAlreadyUsed(slug, athleteId);
-    if (slugInUse) {
-      setEditMessage(athleteId, 'Slug già usato. Scegline uno diverso.', true);
-      return;
-    }
-
-    setEditMessage(athleteId, 'Salvataggio in corso...');
-
     await setDoc(doc(db, 'athletes', athleteId), {
       full_name: fullName,
       slug,
@@ -426,33 +381,24 @@ async function updateAthleteProfile(athleteId, formData) {
       updated_at: serverTimestamp()
     }, { merge: true });
 
-    if (athlete.slug && athlete.slug !== slug) {
+    if (athlete.slug !== slug) {
       await deleteDoc(doc(db, 'public_progress', athlete.slug));
     }
 
-    const updatedAthlete = {
+    await syncPublicProgressForAthlete({
       ...athlete,
       full_name: fullName,
       slug,
       pin,
       is_active: isActive
-    };
-
-    await syncPublicProgressForAthlete(updatedAthlete);
+    });
 
     editingAthleteId = null;
     await loadAthletes();
 
-    if (adminAthlete?.value === athleteId) {
-      await loadScores();
-    }
-
-    if (athleteMessage) {
-      athleteMessage.textContent = `Atleta aggiornato correttamente: ${fullName}`;
-    }
   } catch (error) {
     console.error(error);
-    setEditMessage(athleteId, 'Errore durante il salvataggio.', true);
+    setEditMessage(athleteId, 'Errore salvataggio', true);
   }
 }
 
