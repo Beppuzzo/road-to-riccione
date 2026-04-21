@@ -90,25 +90,34 @@ function showStageDetail(date) {
   const total = Number(currentProgress.stage_totals?.[date] || 0);
   const detail = currentProgress.stage_details?.[date];
 
+  const overlay = document.getElementById('stageModalOverlay');
+
+  const title = document.getElementById('stageModalTitle');
+  const totalEl = document.getElementById('stageModalTotal');
+  const attendance = document.getElementById('stageAttendance');
+  const application = document.getElementById('stageApplication');
+  const technical = document.getElementById('stageTechnical');
+  const resilience = document.getElementById('stageResilience');
+  const notes = document.getElementById('stageNotes');
+
+  title.textContent = `Tappa ${formatStage(date)}`;
+  totalEl.textContent = `${total} / 40`;
+
   if (!detail) {
-    alert(
-      `📅 Tappa ${formatStage(date)}\n\n` +
-      `Totale: ${total} / 40 punti\n\n` +
-      `Nessun dettaglio disponibile per questa tappa.`
-    );
-    return;
+    attendance.textContent = '-';
+    application.textContent = '-';
+    technical.textContent = '-';
+    resilience.textContent = '-';
+    notes.textContent = 'Nessun dettaglio disponibile per questa tappa.';
+  } else {
+    attendance.textContent = detail.attendance_points ?? '-';
+    application.textContent = detail.application_points ?? '-';
+    technical.textContent = detail.technical_points ?? '-';
+    resilience.textContent = detail.resilience_points ?? '-';
+    notes.textContent = detail.notes || 'Nessuna nota';
   }
 
-  const message =
-    `📅 Tappa ${formatStage(date)}\n\n` +
-    `Presenza: ${detail.attendance_points ?? '-'}\n` +
-    `Applicazione: ${detail.application_points ?? '-'}\n` +
-    `Tecnico/Tattico: ${detail.technical_points ?? '-'}\n` +
-    `Resilienza: ${detail.resilience_points ?? '-'}\n\n` +
-    `Totale: ${total} / 40 punti\n\n` +
-    `Note:\n${detail.notes || 'Nessuna nota'}`;
-
-  alert(message);
+  overlay.classList.remove('hidden');
 }
 
 function renderTimeline(stageTotals = {}) {
@@ -239,4 +248,23 @@ athleteLogoutBtn?.addEventListener('click', () => {
 
   sessionStorage.removeItem('athlete_slug');
   window.location.href = 'https://road-to-riccione.vercel.app/';
+});
+
+const overlay = document.getElementById('stageModalOverlay');
+const closeTop = document.getElementById('stageModalCloseTop');
+const closeBottom = document.getElementById('stageModalCloseBottom');
+
+function closeModal() {
+  overlay.classList.add('hidden');
+}
+
+closeTop?.addEventListener('click', closeModal);
+closeBottom?.addEventListener('click', closeModal);
+
+overlay?.addEventListener('click', (e) => {
+  if (e.target === overlay) closeModal();
+});
+
+document.addEventListener('keydown', (e) => {
+  if (e.key === 'Escape') closeModal();
 });
