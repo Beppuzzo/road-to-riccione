@@ -76,6 +76,10 @@ function slugify(value) {
     .replace(/(^-|-$)/g, '');
 }
 
+function generatePin() {
+  return String(Math.floor(10000000 + Math.random() * 90000000));
+}
+
 function buildStageTotals(scores = []) {
   return STAGES.reduce((acc, date) => {
     const score = scores.find((item) => item.session_date === date);
@@ -304,13 +308,16 @@ athleteForm?.addEventListener('submit', async (e) => {
       return;
     }
 
-    const athleteDoc = await addDoc(athletesRef, {
-      full_name: fullName,
-      slug,
-      is_active: true,
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    });
+    const pin = generatePin();
+
+const athleteDoc = await addDoc(athletesRef, {
+  full_name: fullName,
+  slug,
+  pin,
+  is_active: true,
+  created_at: serverTimestamp(),
+  updated_at: serverTimestamp()
+});
 
     await setDoc(doc(db, 'public_progress', slug), {
       athlete_id: athleteDoc.id,
