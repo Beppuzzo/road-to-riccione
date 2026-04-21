@@ -39,13 +39,35 @@ const loginForm = document.getElementById('loginForm');
 const authMessage = document.getElementById('authMessage');
 const logoutBtn = document.getElementById('logoutBtn');
 const refreshAthletesBtn = document.getElementById('refreshAthletes');
+const sessionInfo = document.getElementById('sessionInfo');
 
 const athleteForm = document.getElementById('athleteForm');
 const athleteMessage = document.getElementById('athleteMessage');
 const athletesList = document.getElementById('athletesList');
 
+const adminAthlete = document.getElementById('adminAthlete');
+const sessionDate = document.getElementById('sessionDate');
+const scoreForm = document.getElementById('scoreForm');
+const adminMessage = document.getElementById('adminMessage');
+const adminScores = document.getElementById('adminScores');
+
 let athletesCache = [];
+let adminBooted = false;
 let editingAthleteId = null;
+
+function sessionTotal(score) {
+  return (
+    Number(score.attendance_points || 0) +
+    Number(score.application_points || 0) +
+    Number(score.technical_points || 0) +
+    Number(score.resilience_points || 0)
+  );
+}
+
+function labelDate(dateStr) {
+  const [year, month, day] = dateStr.split('-');
+  return `${day}/${month}/${year}`;
+}
 
 function slugify(value) {
   return String(value || '')
@@ -64,35 +86,13 @@ function isValidPin(pin) {
   return /^\d{8}$/.test(String(pin || ''));
 }
 
-function escapeHtml(v) {
-  return String(v || '')
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;");
-}
-
-function sessionTotal(score) {
-  return (
-    Number(score.attendance_points || 0) +
-    Number(score.application_points || 0) +
-    Number(score.technical_points || 0) +
-    Number(score.resilience_points || 0)
-  );
-}
-
-async function loadScoresByAthleteId(athleteId) {
-  const scoresRef = collection(db, 'scores');
-  const q = query(
-    scoresRef,
-    where('athlete_id', '==', athleteId),
-    orderBy('session_date', 'asc')
-  );
-
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    ...docSnap.data()
-  }));
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function buildStageTotals(scores = []) {
@@ -104,10 +104,21 @@ function buildStageTotals(scores = []) {
 }
 
 function buildStageDetails(scores = []) {
-  return scores.reduce((acc, score) => {
-    if (!score.session_date) return acc;
+  return STAGES.reduce((acc, date) => {
+    const score = scores.find((item) => item.session_date === date);
 
-    acc[score.session_date] = {
+    if (!score) {
+      acc[date] = {
+        attendance_points: 0,
+        application_points: 0,
+        technical_points: 0,
+        resilience_points: 0,
+        notes: ''
+      };
+      return acc;
+    }
+
+    acc[date] = {
       attendance_points: Number(score.attendance_points || 0),
       application_points: Number(score.application_points || 0),
       technical_points: Number(score.technical_points || 0),
@@ -119,8 +130,45 @@ function buildStageDetails(scores = []) {
   }, {});
 }
 
+function setAuthenticatedUI(user) {
+  authCard?.classList.add('hidden');
+  adminApp?.classList.remove('hidden');
+  if (sessionInfo) {
+    sessionInfo.textContent = `Sessione attiva: ${user.email}`;
+  }
+}
+
+function setLoggedOutUI() {
+  authCard?.classList.remove('hidden');
+  adminApp?.classList.add('hidden');
+  if (authMessage) authMessage.textContent = '';
+  if (sessionInfo) sessionInfo.textContent = '';
+}
+
+function loadStageOptions() {
+  if (!sessionDate) return;
+  sessionDate.innerHTML =
+    '<option value="">Seleziona data</option>' +
+    STAGES.map(date => `<option value="${date}">${labelDate(date)}</option>`).join('');
+}
+
+async function loadScoresByAthleteId(athleteId) {
+  const scoresRef = collection(db, 'scores');
+  const q = query(
+    scoresRef,
+    where('athlete_id', '==', athleteId),
+    orderBy('session_date', 'desc')
+  );
+
+  const snapshot = await getDocs(q);
+  return snapshot.docs.map((docSnap) => ({
+    id: docSnap.id,
+    ...docSnap.data()
+  }));
+}
+
 async function syncPublicProgressForAthlete(athlete) {
-  if (!athlete?.id || !athlete?.slug) return;
+  if (!athlete?.slug || !athlete?.id) return;
 
   const scores = await loadScoresByAthleteId(athlete.id);
   const totalPoints = scores.reduce((acc, item) => acc + sessionTotal(item), 0);
@@ -149,31 +197,111 @@ async function syncAllPublicProgress() {
 }
 
 function renderAthletesList() {
-  athletesList.innerHTML = athletesCache.map(a => {
+  if (!athletesList) return;
+
+  if (!athletesCache.length) {
+    athletesList.innerHTML = '<p class="status-text">Nessun atleta registrato.</p>';
+    return;
+  }
+
+  athletesList.innerHTML = athletesCache.map((a) => {
     const isEditing = editingAthleteId === a.id;
-    const parts = String(a.full_name || '').split(' ');
-    const lastName = parts[0] || '';
-    const firstName = parts.slice(1).join(' ') || '';
+    const safeName = escapeHtml(a.full_name || '');
+    const safeSlug = escapeHtml(a.slug || '');
+    const safePin = escapeHtml(a.pin || '');
+    const statusLabel = a.is_active === false ? 'Inattivo' : 'Attivo';
+
+    const parts = String(a.full_name || '').trim().split(/\s+/);
+    const lastName = escapeHtml(parts[0] || '');
+    const firstName = escapeHtml(parts.slice(1).join(' ') || '');
 
     return `
-      <div class="score-card">
-        <strong>${escapeHtml(a.full_name)}</strong>
-        <div>Slug: ${escapeHtml(a.slug)}</div>
-        <div>PIN: ${escapeHtml(a.pin || 'Non assegnato')}</div>
-
-        <button class="edit-btn" data-id="${a.id}">
-          ${isEditing ? 'Chiudi' : 'Modifica'}
-        </button>
+      <div class="score-card" data-athlete-id="${a.id}">
+        <strong>${safeName}</strong>
+        <div class="score-line">Slug: ${safeSlug}</div>
+        <div class="score-line">PIN: ${safePin || 'Non assegnato'}</div>
+        <div class="score-line">Stato: ${statusLabel}</div>
+        <div class="score-line">
+          Link personale:
+          <a href="athlete.html?slug=${encodeURIComponent(a.slug || '')}" target="_blank" rel="noopener noreferrer">
+            athlete.html?slug=${safeSlug}
+          </a>
+        </div>
+        <div class="score-line" style="margin-top:10px;">
+          <button type="button" class="edit-athlete-btn" data-athlete-id="${a.id}">
+            ${isEditing ? 'Chiudi modifica' : 'Modifica'}
+          </button>
+        </div>
 
         ${isEditing ? `
-          <form class="edit-form" data-id="${a.id}">
-            <input name="last_name" value="${escapeHtml(lastName)}" placeholder="Cognome" required>
-            <input name="first_name" value="${escapeHtml(firstName)}" placeholder="Nome" required>
-            <input name="pin" value="${escapeHtml(a.pin || '')}" placeholder="PIN 8 cifre" required>
+          <form class="edit-athlete-form" data-athlete-id="${a.id}" style="margin-top:12px;">
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                Cognome<br>
+                <input
+                  type="text"
+                  name="last_name"
+                  value="${lastName}"
+                  required
+                  style="width:100%;margin-top:4px;"
+                >
+              </label>
+            </div>
 
-            <button type="submit">Salva</button>
-            <button type="button" class="gen-pin" data-id="${a.id}">Genera PIN</button>
-            <button type="button" class="delete-btn" data-id="${a.id}">Elimina</button>
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                Nome<br>
+                <input
+                  type="text"
+                  name="first_name"
+                  value="${firstName}"
+                  required
+                  style="width:100%;margin-top:4px;"
+                >
+              </label>
+            </div>
+
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                PIN (8 cifre)<br>
+                <input
+                  type="text"
+                  name="pin"
+                  value="${safePin}"
+                  inputmode="numeric"
+                  maxlength="8"
+                  pattern="\\d{8}"
+                  required
+                  style="width:100%;margin-top:4px;"
+                >
+              </label>
+            </div>
+
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  ${a.is_active === false ? '' : 'checked'}
+                >
+                Atleta attivo
+              </label>
+            </div>
+
+            <div class="score-line" style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="submit">Salva</button>
+              <button type="button" class="generate-pin-btn" data-athlete-id="${a.id}">
+                Genera PIN
+              </button>
+              <button type="button" class="delete-athlete-btn" data-athlete-id="${a.id}">
+                Elimina Atleta
+              </button>
+              <button type="button" class="cancel-edit-athlete-btn" data-athlete-id="${a.id}">
+                Annulla
+              </button>
+            </div>
+
+            <div class="score-line athlete-edit-message" data-athlete-id="${a.id}" style="margin-top:10px;"></div>
           </form>
         ` : ''}
       </div>
@@ -181,113 +309,273 @@ function renderAthletesList() {
   }).join('');
 }
 
-async function loadAthletes() {
-  const snapshot = await getDocs(query(collection(db, 'athletes')));
-  athletesCache = snapshot.docs.map(d => ({ id: d.id, ...d.data() }));
-  renderAthletesList();
+function refreshAdminAthleteSelect() {
+  if (!adminAthlete) return;
+
+  const currentValue = adminAthlete.value;
+
+  adminAthlete.innerHTML =
+    '<option value="">Seleziona atleta</option>' +
+    athletesCache
+      .map(a => `<option value="${a.id}">${escapeHtml(a.full_name)}</option>`)
+      .join('');
+
+  if (currentValue && athletesCache.some(a => a.id === currentValue)) {
+    adminAthlete.value = currentValue;
+  }
 }
 
-async function updateAthlete(id, formData) {
-  const last = String(formData.get('last_name') || '').trim();
-  const first = String(formData.get('first_name') || '').trim();
-  const pin = String(formData.get('pin') || '').trim();
+function setEditMessage(athleteId, message, isError = false) {
+  const el = document.querySelector(`.athlete-edit-message[data-athlete-id="${athleteId}"]`);
+  if (!el) return;
+  el.textContent = message || '';
+  el.style.color = isError ? '#b00020' : '';
+}
 
-  const full_name = `${last} ${first}`.trim();
-  const slug = slugify(full_name);
+async function bootAdmin() {
+  if (adminBooted) return;
+  adminBooted = true;
 
-  if (!full_name) {
-    alert("Nome atleta non valido");
+  loadStageOptions();
+  await loadAthletes();
+  await syncAllPublicProgress();
+  await loadScores();
+}
+
+async function loadAthletes() {
+  try {
+    const athletesRef = collection(db, 'athletes');
+    const q = query(athletesRef, orderBy('full_name', 'asc'));
+    const snapshot = await getDocs(q);
+
+    athletesCache = snapshot.docs.map(docSnap => ({
+      id: docSnap.id,
+      ...docSnap.data()
+    }));
+
+    refreshAdminAthleteSelect();
+    renderAthletesList();
+
+    if (athleteMessage) athleteMessage.textContent = '';
+  } catch (error) {
+    console.error(error);
+    if (athleteMessage) {
+      athleteMessage.textContent = 'Errore nel caricamento atleti.';
+    }
+  }
+}
+
+async function loadScores() {
+  const athleteId = adminAthlete?.value;
+
+  if (!athleteId) {
+    if (adminScores) {
+      adminScores.innerHTML = '<p class="status-text">Seleziona un atleta per vedere le valutazioni.</p>';
+    }
+    return;
+  }
+
+  try {
+    const data = await loadScoresByAthleteId(athleteId);
+
+    if (!data.length) {
+      adminScores.innerHTML = '<p class="status-text">Nessuna valutazione registrata.</p>';
+      return;
+    }
+
+    adminScores.innerHTML = data.map(item => `
+      <div class="score-card">
+        <strong>${labelDate(item.session_date)} · ${sessionTotal(item)} / 40 punti</strong>
+        <div class="score-line">
+          Presenza: ${item.attendance_points} ·
+          Applicazione: ${item.application_points} ·
+          Tecnico-tattico: ${item.technical_points} ·
+          Resilienza: ${item.resilience_points}
+        </div>
+        <div class="score-line">${escapeHtml(item.notes || 'Nessuna nota')}</div>
+      </div>
+    `).join('');
+
+    if (adminMessage) adminMessage.textContent = '';
+  } catch (error) {
+    console.error(error);
+    if (adminMessage) {
+      adminMessage.textContent = 'Errore nel caricamento valutazioni.';
+    }
+  }
+}
+
+async function slugAlreadyUsed(slug, excludeAthleteId = null) {
+  const athletesRef = collection(db, 'athletes');
+  const slugQuery = query(athletesRef, where('slug', '==', slug));
+  const slugSnapshot = await getDocs(slugQuery);
+
+  return slugSnapshot.docs.some((docSnap) => docSnap.id !== excludeAthleteId);
+}
+
+async function updateAthleteProfile(athleteId, formData) {
+  const athlete = athletesCache.find((item) => item.id === athleteId);
+
+  if (!athlete) {
+    setEditMessage(athleteId, 'Atleta non trovato.', true);
+    return;
+  }
+
+  const lastName = formData.get('last_name')?.toString().trim() || '';
+  const firstName = formData.get('first_name')?.toString().trim() || '';
+  const fullName = `${lastName} ${firstName}`.trim();
+  const slug = slugify(fullName);
+  const pin = formData.get('pin')?.toString().trim() || '';
+  const isActive = formData.get('is_active') === 'on';
+
+  const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
+  const pinInput = formEl?.querySelector('input[name="pin"]');
+
+  if (pinInput) pinInput.value = pin.replace(/\D/g, '').slice(0, 8);
+
+  if (!fullName || !slug) {
+    setEditMessage(athleteId, 'Nome atleta non valido.', true);
     return;
   }
 
   if (!isValidPin(pin)) {
-    alert("PIN non valido");
+    setEditMessage(athleteId, 'Il PIN deve avere esattamente 8 cifre.', true);
     return;
   }
 
-  const athlete = athletesCache.find(a => a.id === id);
+  try {
+    const slugInUse = await slugAlreadyUsed(slug, athleteId);
+    if (slugInUse) {
+      setEditMessage(athleteId, 'Slug già usato. Correggi nome/cognome.', true);
+      return;
+    }
+
+    setEditMessage(athleteId, 'Salvataggio in corso...');
+
+    await setDoc(doc(db, 'athletes', athleteId), {
+      full_name: fullName,
+      slug,
+      pin,
+      is_active: isActive,
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    if (athlete.slug && athlete.slug !== slug) {
+      await deleteDoc(doc(db, 'public_progress', athlete.slug));
+    }
+
+    const updatedAthlete = {
+      ...athlete,
+      full_name: fullName,
+      slug,
+      pin,
+      is_active: isActive
+    };
+
+    await syncPublicProgressForAthlete(updatedAthlete);
+
+    editingAthleteId = null;
+    await loadAthletes();
+
+    if (adminAthlete?.value === athleteId) {
+      await loadScores();
+    }
+
+    if (athleteMessage) {
+      athleteMessage.textContent = `Atleta aggiornato correttamente: ${fullName}`;
+    }
+  } catch (error) {
+    console.error(error);
+    setEditMessage(athleteId, 'Errore durante il salvataggio.', true);
+  }
+}
+
+async function deleteAthlete(athleteId) {
+  const athlete = athletesCache.find(a => a.id === athleteId);
   if (!athlete) return;
 
-  await setDoc(doc(db, 'athletes', id), {
-    full_name,
-    slug,
-    pin,
-    updated_at: serverTimestamp()
-  }, { merge: true });
+  const confirmed = window.confirm(`Confermi eliminazione atleta "${athlete.full_name}"?`);
+  if (!confirmed) return;
 
-  if (athlete.slug && athlete.slug !== slug) {
-    await deleteDoc(doc(db, 'public_progress', athlete.slug));
-  }
+  try {
+    await deleteDoc(doc(db, 'athletes', athleteId));
 
-  const updatedAthlete = {
-    ...athlete,
-    full_name,
-    slug,
-    pin
-  };
-
-  await syncPublicProgressForAthlete(updatedAthlete);
-
-  editingAthleteId = null;
-  await loadAthletes();
-}
-
-async function deleteAthlete(id) {
-  if (!confirm("Eliminare atleta?")) return;
-
-  const athlete = athletesCache.find(a => a.id === id);
-
-  await deleteDoc(doc(db, 'athletes', id));
-
-  if (athlete?.slug) {
-    await deleteDoc(doc(db, 'public_progress', athlete.slug));
-  }
-
-  const q = query(collection(db, 'scores'), where('athlete_id', '==', id));
-  const snap = await getDocs(q);
-
-  for (const d of snap.docs) {
-    await deleteDoc(doc(db, 'scores', d.id));
-  }
-
-  await loadAthletes();
-}
-
-athletesList.addEventListener('click', e => {
-  const edit = e.target.closest('.edit-btn');
-  const gen = e.target.closest('.gen-pin');
-  const del = e.target.closest('.delete-btn');
-
-  if (edit) {
-    editingAthleteId = editingAthleteId === edit.dataset.id ? null : edit.dataset.id;
-    renderAthletesList();
-  }
-
-  if (gen) {
-    const form = document.querySelector(`form[data-id="${gen.dataset.id}"]`);
-    form?.querySelector('[name=pin]')?.setAttribute('value', generatePin());
-    if (form?.querySelector('[name=pin]')) {
-      form.querySelector('[name=pin]').value = generatePin();
+    if (athlete.slug) {
+      await deleteDoc(doc(db, 'public_progress', athlete.slug));
     }
-  }
 
-  if (del) {
-    deleteAthlete(del.dataset.id);
+    const scoresRef = collection(db, 'scores');
+    const q = query(scoresRef, where('athlete_id', '==', athleteId));
+    const snapshot = await getDocs(q);
+
+    for (const docSnap of snapshot.docs) {
+      await deleteDoc(doc(db, 'scores', docSnap.id));
+    }
+
+    if (adminAthlete?.value === athleteId) {
+      adminAthlete.value = '';
+      if (adminScores) {
+        adminScores.innerHTML = '<p class="status-text">Seleziona un atleta per vedere le valutazioni.</p>';
+      }
+    }
+
+    editingAthleteId = null;
+    await loadAthletes();
+
+    if (athleteMessage) {
+      athleteMessage.textContent = `Atleta eliminato: ${athlete.full_name}`;
+    }
+  } catch (error) {
+    console.error(error);
+    alert("Errore eliminazione atleta");
+  }
+}
+
+loginForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+  if (authMessage) authMessage.textContent = 'Accesso in corso...';
+
+  const email = document.getElementById('email')?.value.trim();
+  const password = document.getElementById('password')?.value;
+
+  try {
+    await signInWithEmailAndPassword(auth, email, password);
+    if (authMessage) authMessage.textContent = 'Accesso effettuato.';
+  } catch (error) {
+    console.error(error);
+    if (authMessage) {
+      authMessage.textContent = 'Login non riuscito. Controlla email e password.';
+    }
   }
 });
 
-athletesList.addEventListener('submit', async e => {
-  e.preventDefault();
-  const form = e.target;
-  await updateAthlete(form.dataset.id, new FormData(form));
+logoutBtn?.addEventListener('click', async () => {
+  try {
+    await signOut(auth);
+    window.location.href = 'https://road-to-riccione.vercel.app/';
+  } catch (error) {
+    console.error(error);
+  }
+});
+
+refreshAthletesBtn?.addEventListener('click', async () => {
+  try {
+    await loadAthletes();
+    await syncAllPublicProgress();
+    await loadScores();
+    alert('Elenco atleti aggiornato correttamente.');
+  } catch (error) {
+    console.error(error);
+    alert(`Errore refresh: ${error.message}`);
+  }
 });
 
 athleteForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
 
-  const fullName = String(document.getElementById('fullName')?.value || '').trim();
+  const fullName = document.getElementById('fullName')?.value.trim();
   const slugInput = document.getElementById('slug');
-  const slug = slugify(slugInput?.value?.trim() || fullName || '');
+  const slug = slugify(slugInput?.value.trim() || fullName || '');
 
   if (slugInput) slugInput.value = slug;
 
@@ -299,9 +587,17 @@ athleteForm?.addEventListener('submit', async (e) => {
   }
 
   try {
+    const athletesRef = collection(db, 'athletes');
+
+    const slugInUse = await slugAlreadyUsed(slug);
+    if (slugInUse) {
+      athleteMessage.textContent = 'Slug già usato. Scegline uno diverso.';
+      return;
+    }
+
     const pin = generatePin();
 
-    const athleteDoc = await addDoc(collection(db, 'athletes'), {
+    const athleteDoc = await addDoc(athletesRef, {
       full_name: fullName,
       slug,
       pin,
@@ -324,62 +620,168 @@ athleteForm?.addEventListener('submit', async (e) => {
         acc[date] = 0;
         return acc;
       }, {}),
-      stage_details: {},
+      stage_details: STAGES.reduce((acc, date) => {
+        acc[date] = {
+          attendance_points: 0,
+          application_points: 0,
+          technical_points: 0,
+          resilience_points: 0,
+          notes: ''
+        };
+        return acc;
+      }, {}),
       updated_at: serverTimestamp()
     });
 
-    if (athleteMessage) {
-      athleteMessage.textContent = `Atleta salvato. PIN assegnato: ${pin}`;
-    }
-
+    athleteMessage.textContent = `Atleta salvato. Link personale: athlete.html?slug=${slug}`;
     athleteForm.reset();
+
+    const slugField = document.getElementById('slug');
+    if (slugField) delete slugField.dataset.touched;
+
     await loadAthletes();
   } catch (error) {
     console.error(error);
-    if (athleteMessage) {
-      athleteMessage.textContent = 'Errore durante il salvataggio atleta.';
-    }
+    athleteMessage.textContent = 'Errore durante il salvataggio atleta.';
   }
 });
 
-loginForm?.addEventListener('submit', async e => {
+adminAthlete?.addEventListener('change', loadScores);
+
+document.getElementById('fullName')?.addEventListener('input', (e) => {
+  const currentSlug = document.getElementById('slug');
+  if (currentSlug && !currentSlug.dataset.touched) {
+    currentSlug.value = slugify(e.target.value);
+  }
+});
+
+document.getElementById('slug')?.addEventListener('input', (e) => {
+  e.target.dataset.touched = 'true';
+  e.target.value = slugify(e.target.value);
+});
+
+athletesList?.addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.edit-athlete-btn');
+  const cancelBtn = e.target.closest('.cancel-edit-athlete-btn');
+  const generatePinBtn = e.target.closest('.generate-pin-btn');
+  const deleteBtn = e.target.closest('.delete-athlete-btn');
+
+  if (editBtn) {
+    const athleteId = editBtn.dataset.athleteId;
+    editingAthleteId = editingAthleteId === athleteId ? null : athleteId;
+    renderAthletesList();
+    return;
+  }
+
+  if (cancelBtn) {
+    editingAthleteId = null;
+    renderAthletesList();
+    return;
+  }
+
+  if (generatePinBtn) {
+    const athleteId = generatePinBtn.dataset.athleteId;
+    const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
+    const pinInput = formEl?.querySelector('input[name="pin"]');
+    if (pinInput) {
+      pinInput.value = generatePin();
+      pinInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+    return;
+  }
+
+  if (deleteBtn) {
+    const athleteId = deleteBtn.dataset.athleteId;
+    deleteAthlete(athleteId);
+  }
+});
+
+athletesList?.addEventListener('input', (e) => {
+  const target = e.target;
+  if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.name === 'pin') {
+    target.value = target.value.replace(/\D/g, '').slice(0, 8);
+  }
+});
+
+athletesList?.addEventListener('submit', async (e) => {
+  const form = e.target.closest('.edit-athlete-form');
+  if (!form) return;
+
   e.preventDefault();
-  const email = document.getElementById('email').value;
-  const pass = document.getElementById('password').value;
+
+  const athleteId = form.dataset.athleteId;
+  const formData = new FormData(form);
+
+  await updateAthleteProfile(athleteId, formData);
+});
+
+scoreForm?.addEventListener('submit', async (e) => {
+  e.preventDefault();
+
+  const payload = {
+    athlete_id: adminAthlete?.value || '',
+    session_date: sessionDate?.value || '',
+    attendance_points: Number(document.getElementById('attendance')?.value || 0),
+    application_points: Number(document.getElementById('application')?.value || 0),
+    technical_points: Number(document.getElementById('technical')?.value || 0),
+    resilience_points: Number(document.getElementById('resilience')?.value || 0),
+    notes: document.getElementById('notes')?.value.trim() || '',
+    updated_at: serverTimestamp()
+  };
+
+  if (!payload.athlete_id || !payload.session_date) {
+    if (adminMessage) adminMessage.textContent = 'Seleziona atleta e data.';
+    return;
+  }
 
   try {
-    await signInWithEmailAndPassword(auth, email, pass);
-    if (authMessage) authMessage.textContent = '';
+    const docId = `${payload.athlete_id}_${payload.session_date}`;
+
+    await setDoc(doc(db, 'scores', docId), {
+      ...payload,
+      created_at: serverTimestamp()
+    }, { merge: true });
+
+    const athlete = athletesCache.find((item) => item.id === payload.athlete_id);
+    if (athlete) {
+      await syncPublicProgressForAthlete(athlete);
+    }
+
+    if (adminMessage) {
+      adminMessage.textContent = 'Valutazione salvata correttamente.';
+    }
+
+    scoreForm.reset();
+
+    const attendance = document.getElementById('attendance');
+    const application = document.getElementById('application');
+    const technical = document.getElementById('technical');
+    const resilience = document.getElementById('resilience');
+
+    if (attendance) attendance.value = 10;
+    if (application) application.value = 6;
+    if (technical) technical.value = 6;
+    if (resilience) resilience.value = 6;
+    if (adminAthlete) adminAthlete.value = payload.athlete_id;
+    if (sessionDate) sessionDate.value = payload.session_date;
+
+    await loadScores();
   } catch (error) {
     console.error(error);
-    if (authMessage) {
-      authMessage.textContent = 'Login non riuscito. Controlla email e password.';
+    if (adminMessage) {
+      adminMessage.textContent = 'Errore durante il salvataggio.';
     }
   }
 });
 
-logoutBtn?.addEventListener('click', async () => {
-  try {
-    await signOut(auth);
-    window.location.href = 'https://road-to-riccione.vercel.app/';
-  } catch (error) {
-    console.error(error);
-  }
-});
-
-refreshAthletesBtn?.addEventListener('click', async () => {
-  await loadAthletes();
-  await syncAllPublicProgress();
-});
-
-onAuthStateChanged(auth, async user => {
+onAuthStateChanged(auth, async (user) => {
   if (user) {
-    authCard?.classList.add('hidden');
-    adminApp?.classList.remove('hidden');
-    await loadAthletes();
-    await syncAllPublicProgress();
+    setAuthenticatedUI(user);
+    await bootAdmin();
   } else {
-    authCard?.classList.remove('hidden');
-    adminApp?.classList.add('hidden');
+    adminBooted = false;
+    setLoggedOutUI();
   }
 });
