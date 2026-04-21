@@ -32,7 +32,21 @@
       </div>
     </section>
 
-    <section id="dashboard" class="dashboard">
+    <div id="pin-gate" class="card form-card">
+      <div class="timeline-header">
+        <h3>Accesso atleta</h3>
+        <p>Inserisci il tuo codice di accesso</p>
+      </div>
+    
+      <input type="password" id="pin-input" maxlength="8" placeholder="PIN" />
+      <button onclick="unlock()">Entra</button>
+    
+      <p id="pin-error" class="status-text" style="color:red; display:none;">
+        Codice non corretto
+      </p>
+    </div>
+    
+    <section id="dashboard" class="dashboard hidden">
       <section class="card summary">
         <div>
           <p class="eyebrow">Atleta</p>
