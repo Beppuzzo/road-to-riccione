@@ -24,6 +24,7 @@ const STAGES = [
 
 let currentAthlete = null;
 let currentSlug = getSlugFromUrl();
+let currentProgress = null;
 
 const dashboard = document.getElementById('dashboard');
 const athleteNameEl = document.getElementById('athleteName');
@@ -83,13 +84,40 @@ async function loadPublicProgress(slug) {
   return snapshot.data();
 }
 
+function showStageDetail(date) {
+  if (!currentProgress) return;
+
+  const total = Number(currentProgress.stage_totals?.[date] || 0);
+  const detail = currentProgress.stage_details?.[date];
+
+  if (!detail) {
+    alert(
+      `📅 Tappa ${formatStage(date)}\n\n` +
+      `Totale: ${total} / 40 punti\n\n` +
+      `Nessun dettaglio disponibile per questa tappa.`
+    );
+    return;
+  }
+
+  const message =
+    `📅 Tappa ${formatStage(date)}\n\n` +
+    `Presenza: ${detail.attendance_points ?? '-'}\n` +
+    `Applicazione: ${detail.application_points ?? '-'}\n` +
+    `Tecnico/Tattico: ${detail.technical_points ?? '-'}\n` +
+    `Resilienza: ${detail.resilience_points ?? '-'}\n\n` +
+    `Totale: ${total} / 40 punti\n\n` +
+    `Note:\n${detail.notes || 'Nessuna nota'}`;
+
+  alert(message);
+}
+
 function renderTimeline(stageTotals = {}) {
   timelineEl.innerHTML = STAGES.map((date) => {
     const total = Number(stageTotals[date] || 0);
 
     if (!total) {
       return `
-        <article class="stage pending">
+        <article class="stage pending" data-date="${date}" style="cursor:pointer;">
           <div class="stage-date">${formatStage(date)}</div>
           <div class="stage-status">Tappa non ancora valutata</div>
           <div class="stage-points">0 / 40 punti</div>
@@ -98,18 +126,27 @@ function renderTimeline(stageTotals = {}) {
     }
 
     return `
-      <article class="stage completed">
+      <article class="stage completed" data-date="${date}" style="cursor:pointer;">
         <div class="stage-date">${formatStage(date)}</div>
         <div class="stage-status">Valutazione completata</div>
         <div class="stage-points">${total} / 40 punti</div>
       </article>
     `;
   }).join('');
+
+  document.querySelectorAll('.stage').forEach((stageEl) => {
+    stageEl.addEventListener('click', () => {
+      const date = stageEl.dataset.date;
+      if (!date) return;
+      showStageDetail(date);
+    });
+  });
 }
 
 async function loadAthleteDashboard(slug) {
   try {
     const progress = await loadPublicProgress(slug);
+    currentProgress = progress;
 
     if (!progress || !progress.is_active) {
       showEmpty('Percorso non trovato. Controlla il link personale o chiedi allo staff.');
@@ -156,14 +193,12 @@ async function init() {
   const access = sessionStorage.getItem(`access_${currentSlug}`);
   const prefillPin = sessionStorage.getItem(`prefill_pin_${currentSlug}`);
 
-  // 🔥 NUOVA LOGICA COMPLETA
   if (access === "ok") {
     document.getElementById("pin-gate").style.display = "none";
     dashboard.classList.remove("hidden");
     loadAthleteDashboard(currentSlug);
 
   } else if (prefillPin && prefillPin === currentAthlete.pin) {
-    // 👉 accesso automatico da homepage
     sessionStorage.setItem(`access_${currentSlug}`, "ok");
     sessionStorage.removeItem(`prefill_pin_${currentSlug}`);
 
