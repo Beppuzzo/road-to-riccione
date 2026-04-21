@@ -13,8 +13,15 @@
   <div class="bg-glow"></div>
 
   <main class="container">
-    <!-- AREA PUBBLICA / LOGIN -->
-    <section id="publicAccess" class="card" style="padding: 32px 28px; display: flex; flex-direction: column; gap: 26px;">
+    <section
+      class="card"
+      style="
+        padding: 32px 28px;
+        display: flex;
+        flex-direction: column;
+        gap: 26px;
+      "
+    >
       <div
         style="
           background: rgba(6, 23, 52, 0.92);
@@ -152,8 +159,7 @@
             font-weight: 800;
           "
         >
-          Scegli la tua area di accesso per visualizzare<br />
-          il percorso atleta oppure entrare nel pannello tecnico.
+          Accedi alla tua area riservata
         </h2>
       </div>
 
@@ -167,7 +173,6 @@
       >
         <!-- LOGIN ATLETA -->
         <section
-          id="athleteAuthCard"
           style="
             background: rgba(6, 23, 52, 0.94);
             border: 1px solid rgba(255,255,255,0.08);
@@ -258,7 +263,7 @@
                 type="password"
                 inputmode="numeric"
                 maxlength="8"
-                placeholder="ti è stato assegnato dall’admin"
+                placeholder="PIN assegnato dall’admin"
                 style="
                   width: 100%;
                   box-sizing: border-box;
@@ -295,13 +300,12 @@
               text-align: center;
             "
           >
-            Inserisci slug e PIN per aprire il tuo percorso.
+            Inserisci slug e PIN per accedere alla tua area personale.
           </p>
         </section>
 
         <!-- LOGIN ADMIN -->
         <section
-          id="authCard"
           style="
             background: rgba(6, 23, 52, 0.94);
             border: 1px solid rgba(255,255,255,0.08);
@@ -432,200 +436,17 @@
               text-align: center;
             "
           >
-            Accesso riservato allo staff tecnico per inserimento valutazioni e gestione atleti.
+            Accesso riservato allo staff tecnico.
           </p>
         </section>
       </div>
-    </section>
-
-    <!-- AREA ATLETA -->
-    <section id="athleteApp" class="hidden">
-      <section class="hero card">
-        <div>
-          <p class="eyebrow">Road to Riccione</p>
-          <h1>Campionati Italiani U14</h1>
-          <p class="subtitle">Percorso di valutazione dal 16 aprile al 6 maggio 2026.</p>
-        </div>
-
-        <div class="hero-meta">
-          <div class="meta-box">
-            <span>Punti massimi</span>
-            <strong>360</strong>
-          </div>
-          <div class="meta-box accent">
-            <span>Soglia qualificazione</span>
-            <strong>252</strong>
-          </div>
-        </div>
-      </section>
-
-      <section class="card form-card admin-toolbar">
-        <div>
-          <strong id="athleteSessionInfo">Area atleta</strong>
-          <p class="status-text">Visualizzi solo il tuo percorso personale.</p>
-        </div>
-        <div class="toolbar-actions">
-          <button id="athleteLogoutBtn" type="button">Esci</button>
-        </div>
-      </section>
-
-      <section id="dashboard" class="dashboard hidden">
-        <section class="card summary">
-          <div>
-            <p class="eyebrow">Atleta</p>
-            <h2 id="athleteName">-</h2>
-            <p id="qualificationBadge" class="badge neutral">In corsa</p>
-          </div>
-
-          <div class="summary-stats">
-            <div>
-              <span>Punti attuali</span>
-              <strong id="currentPoints">0</strong>
-            </div>
-            <div>
-              <span>Percentuale</span>
-              <strong id="currentPercent">0%</strong>
-            </div>
-            <div>
-              <span>Mancano alla soglia</span>
-              <strong id="missingToTarget">252</strong>
-            </div>
-          </div>
-        </section>
-
-        <section class="card progress-section">
-          <div class="progress-header">
-            <h3>Avanzamento verso Riccione</h3>
-            <span id="progressLabel">0 / 360 punti</span>
-          </div>
-
-          <div class="progress-wrap">
-            <div class="progress-bar">
-              <div id="progressFill" class="progress-fill"></div>
-              <div class="target-marker" style="left: 70%;"></div>
-            </div>
-            <div class="progress-scale">
-              <span>0</span>
-              <span>Soglia 252</span>
-              <span>360</span>
-            </div>
-          </div>
-        </section>
-
-        <section class="timeline-section">
-          <div class="timeline-header">
-            <h3>Le tappe del percorso</h3>
-            <p>Ogni tappa assegna fino a 40 punti.</p>
-          </div>
-          <div id="timeline" class="timeline"></div>
-        </section>
-      </section>
-
-      <section class="card form-card hidden" id="emptyState">
-        <div class="timeline-header">
-          <h3>Percorso non disponibile</h3>
-          <p id="statusText">Controlla il link oppure chiedi allo staff il tuo link personale.</p>
-        </div>
-      </section>
-    </section>
-
-    <!-- AREA ADMIN -->
-    <section id="adminApp" class="hidden">
-      <section class="card form-card admin-toolbar">
-        <div>
-          <strong id="sessionInfo">Sessione attiva</strong>
-          <p class="status-text">Solo lo staff autenticato può leggere e modificare i dati completi.</p>
-        </div>
-        <div class="toolbar-actions">
-          <button id="refreshAthletes" type="button">Aggiorna elenco</button>
-          <button id="logoutBtn" type="button">Esci</button>
-        </div>
-      </section>
-
-      <section class="card form-card">
-        <div class="timeline-header">
-          <h3>Nuovo atleta</h3>
-          <p>Crea l’atleta e genera il link personale da condividere.</p>
-        </div>
-        <form id="athleteForm" class="form-grid">
-          <div>
-            <label for="fullName">Nome atleta</label>
-            <input id="fullName" type="text" required />
-          </div>
-          <div>
-            <label for="slug">Slug pubblico</label>
-            <input id="slug" type="text" placeholder="es. mario-rossi-u14-k7m2" required />
-          </div>
-          <div class="full-width">
-            <button type="submit" class="primary-btn">Salva atleta</button>
-          </div>
-        </form>
-        <p id="athleteMessage" class="status-text"></p>
-      </section>
-
-      <section class="card form-card">
-        <div class="timeline-header">
-          <h3>Inserimento valutazioni</h3>
-          <p>Aggiorna i punteggi e l’avanzamento del percorso verso Riccione.</p>
-        </div>
-        <form id="scoreForm" class="form-grid">
-          <div>
-            <label for="adminAthlete">Atleta</label>
-            <select id="adminAthlete" required></select>
-          </div>
-          <div>
-            <label for="sessionDate">Data allenamento</label>
-            <select id="sessionDate" required></select>
-          </div>
-          <div>
-            <label for="attendance">Presenza</label>
-            <input id="attendance" type="number" min="0" max="10" value="10" required />
-            <small>Usa 10 se presente, 0 se assente.</small>
-          </div>
-          <div>
-            <label for="application">Applicazione e focus</label>
-            <input id="application" type="number" min="2" max="10" value="6" required />
-          </div>
-          <div>
-            <label for="technical">Focus tecnico tattico</label>
-            <input id="technical" type="number" min="2" max="10" value="6" required />
-          </div>
-          <div>
-            <label for="resilience">Resilienza alla fatica</label>
-            <input id="resilience" type="number" min="2" max="10" value="6" required />
-          </div>
-          <div class="full-width">
-            <label for="notes">Note</label>
-            <textarea id="notes" rows="3" placeholder="Osservazioni tecniche o comportamentali"></textarea>
-          </div>
-          <div class="full-width">
-            <button type="submit" class="primary-btn">Salva valutazione</button>
-          </div>
-        </form>
-        <p id="adminMessage" class="status-text"></p>
-      </section>
-
-      <section class="card form-card">
-        <div class="timeline-header">
-          <h3>Atleti registrati</h3>
-          <p>Per ciascun atleta puoi condividere il link personale senza mostrare gli altri.</p>
-        </div>
-        <div id="athletesList" class="admin-scores"></div>
-      </section>
-
-      <section class="card">
-        <div class="timeline-header">
-          <h3>Valutazioni registrate</h3>
-          <p>Ultimi inserimenti per l’atleta selezionato.</p>
-        </div>
-        <div id="adminScores" class="admin-scores"></div>
-      </section>
     </section>
 
     <section class="footer-note">
       <p>Area tecnica riservata allo staff. Gli atleti vedono solo il proprio percorso.</p>
     </section>
   </main>
+
   <script type="module" src="index.js"></script>
 </body>
 </html>
