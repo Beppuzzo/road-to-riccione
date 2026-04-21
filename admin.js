@@ -19,15 +19,8 @@ import {
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const STAGES = [
-  '2026-04-16',
-  '2026-04-17',
-  '2026-04-19',
-  '2026-04-20',
-  '2026-04-22',
-  '2026-04-24',
-  '2026-04-27',
-  '2026-04-29',
-  '2026-05-04'
+  '2026-04-16','2026-04-17','2026-04-19','2026-04-20',
+  '2026-04-22','2026-04-24','2026-04-27','2026-04-29','2026-05-04'
 ];
 
 const MAX_TOTAL_POINTS = 360;
@@ -39,39 +32,16 @@ const loginForm = document.getElementById('loginForm');
 const authMessage = document.getElementById('authMessage');
 const logoutBtn = document.getElementById('logoutBtn');
 const refreshAthletesBtn = document.getElementById('refreshAthletes');
-const sessionInfo = document.getElementById('sessionInfo');
 
 const athleteForm = document.getElementById('athleteForm');
 const athleteMessage = document.getElementById('athleteMessage');
 const athletesList = document.getElementById('athletesList');
 
-const adminAthlete = document.getElementById('adminAthlete');
-const sessionDate = document.getElementById('sessionDate');
-const scoreForm = document.getElementById('scoreForm');
-const adminMessage = document.getElementById('adminMessage');
-const adminScores = document.getElementById('adminScores');
-
 let athletesCache = [];
-let adminBooted = false;
 let editingAthleteId = null;
 
-function sessionTotal(score) {
-  return (
-    Number(score.attendance_points || 0) +
-    Number(score.application_points || 0) +
-    Number(score.technical_points || 0) +
-    Number(score.resilience_points || 0)
-  );
-}
-
-function labelDate(dateStr) {
-  const [year, month, day] = dateStr.split('-');
-  return `${day}/${month}/${year}`;
-}
-
 function slugify(value) {
-  return value
-    .toLowerCase()
+  return value.toLowerCase()
     .normalize('NFD')
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[^a-z0-9]+/g, '-')
@@ -83,621 +53,146 @@ function generatePin() {
 }
 
 function isValidPin(pin) {
-  return /^\d{8}$/.test(String(pin || ''));
+  return /^\d{8}$/.test(pin);
 }
 
-function escapeHtml(value) {
-  return String(value ?? '')
-    .replace(/&/g, '&amp;')
-    .replace(/</g, '&lt;')
-    .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;')
-    .replace(/'/g, '&#39;');
-}
-
-function buildStageTotals(scores = []) {
-  return STAGES.reduce((acc, date) => {
-    const score = scores.find((item) => item.session_date === date);
-    acc[date] = score ? sessionTotal(score) : 0;
-    return acc;
-  }, {});
-}
-
-function setAuthenticatedUI(user) {
-  authCard?.classList.add('hidden');
-  adminApp?.classList.remove('hidden');
-  if (sessionInfo) {
-    sessionInfo.textContent = `Sessione attiva: ${user.email}`;
-  }
-}
-
-function setLoggedOutUI() {
-  authCard?.classList.remove('hidden');
-  adminApp?.classList.add('hidden');
-  if (authMessage) authMessage.textContent = '';
-  if (sessionInfo) sessionInfo.textContent = '';
-}
-
-function loadStageOptions() {
-  if (!sessionDate) return;
-  sessionDate.innerHTML =
-    '<option value="">Seleziona data</option>' +
-    STAGES.map(date => `<option value="${date}">${labelDate(date)}</option>`).join('');
-}
-
-async function loadScoresByAthleteId(athleteId) {
-  const scoresRef = collection(db, 'scores');
-  const q = query(
-    scoresRef,
-    where('athlete_id', '==', athleteId),
-    orderBy('session_date', 'desc')
-  );
-
-  const snapshot = await getDocs(q);
-  return snapshot.docs.map((docSnap) => ({
-    id: docSnap.id,
-    ...docSnap.data()
-  }));
-}
-
-async function syncPublicProgressForAthlete(athlete) {
-  if (!athlete?.slug || !athlete?.id) return;
-
-  const scores = await loadScoresByAthleteId(athlete.id);
-  const totalPoints = scores.reduce((acc, item) => acc + sessionTotal(item), 0);
-  const percent = Math.round((totalPoints / MAX_TOTAL_POINTS) * 100);
-
-  await setDoc(doc(db, 'public_progress', athlete.slug), {
-    athlete_id: athlete.id,
-    slug: athlete.slug,
-    full_name: athlete.full_name,
-    is_active: athlete.is_active !== false,
-    total_points: totalPoints,
-    percent,
-    target_points: TARGET_POINTS,
-    max_total_points: MAX_TOTAL_POINTS,
-    qualified: totalPoints >= TARGET_POINTS,
-    stage_totals: buildStageTotals(scores),
-    updated_at: serverTimestamp()
-  }, { merge: true });
-}
-
-async function syncAllPublicProgress() {
-  for (const athlete of athletesCache) {
-    await syncPublicProgressForAthlete(athlete);
-  }
+function escapeHtml(v) {
+  return String(v || '')
+    .replace(/&/g,"&amp;")
+    .replace(/</g,"&lt;")
+    .replace(/>/g,"&gt;");
 }
 
 function renderAthletesList() {
-  if (!athletesList) return;
+  athletesList.innerHTML = athletesCache.map(a => {
 
-  if (!athletesCache.length) {
-    athletesList.innerHTML = '<p class="status-text">Nessun atleta registrato.</p>';
-    return;
-  }
-
-  athletesList.innerHTML = athletesCache.map((a) => {
     const isEditing = editingAthleteId === a.id;
-    const safeName = escapeHtml(a.full_name || '');
-    const safeSlug = escapeHtml(a.slug || '');
-    const safePin = escapeHtml(a.pin || '');
-    const statusLabel = a.is_active === false ? 'Inattivo' : 'Attivo';
-
     const parts = (a.full_name || '').split(' ');
     const lastName = parts[0] || '';
     const firstName = parts.slice(1).join(' ') || '';
 
     return `
-      <div class="score-card" data-athlete-id="${a.id}">
-        <strong>${safeName}</strong>
-        <div class="score-line">Slug: ${safeSlug}</div>
-        <div class="score-line">PIN: ${safePin || 'Non assegnato'}</div>
-        <div class="score-line">Stato: ${statusLabel}</div>
+    <div class="score-card">
+      <strong>${escapeHtml(a.full_name)}</strong>
+      <div>Slug: ${a.slug}</div>
+      <div>PIN: ${a.pin || 'Non assegnato'}</div>
 
-        <div class="score-line" style="margin-top:10px;">
-          <button type="button" class="edit-athlete-btn" data-athlete-id="${a.id}">
-            ${isEditing ? 'Chiudi modifica' : 'Modifica'}
-          </button>
-        </div>
+      <button class="edit-btn" data-id="${a.id}">
+        ${isEditing ? 'Chiudi' : 'Modifica'}
+      </button>
 
-        ${isEditing ? `
-          <form class="edit-athlete-form" data-athlete-id="${a.id}" style="margin-top:12px;">
+      ${isEditing ? `
+        <form class="edit-form" data-id="${a.id}">
+          <input name="last_name" value="${lastName}" placeholder="Cognome" required>
+          <input name="first_name" value="${firstName}" placeholder="Nome" required>
+          <input name="pin" value="${a.pin || ''}" placeholder="PIN 8 cifre" required>
 
-            <div class="score-line">
-              Slug: ${safeSlug}
-            </div>
-
-            <div class="score-line" style="margin-bottom:8px;">
-              <label>
-                Cognome<br>
-                <input type="text" name="last_name" value="${escapeHtml(lastName)}" required style="width:100%;">
-              </label>
-            </div>
-
-            <div class="score-line" style="margin-bottom:8px;">
-              <label>
-                Nome<br>
-                <input type="text" name="first_name" value="${escapeHtml(firstName)}" required style="width:100%;">
-              </label>
-            </div>
-
-            <div class="score-line">
-              <label>
-                PIN (8 cifre)<br>
-                <input type="text" name="pin" value="${safePin}" required style="width:100%;">
-              </label>
-            </div>
-
-            <div class="score-line">
-              <label>
-                <input type="checkbox" name="is_active" ${a.is_active === false ? '' : 'checked'}>
-                Atleta attivo
-              </label>
-            </div>
-
-            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
-  <button type="submit">Salva</button>
-
-  <button type="button" class="generate-pin-btn" data-athlete-id="${a.id}">
-    Genera PIN
-  </button>
-
-  <button type="button" class="delete-athlete-btn" data-athlete-id="${a.id}" style="background:#b00020;color:white;">
-    Elimina atleta
-  </button>
-</div>
-
-            <div class="athlete-edit-message" data-athlete-id="${a.id}"></div>
-          </form>
-        ` : ''}
-      </div>
+          <button type="submit">Salva</button>
+          <button type="button" class="gen-pin" data-id="${a.id}">Genera PIN</button>
+          <button type="button" class="delete-btn" data-id="${a.id}">Elimina</button>
+        </form>
+      ` : ''}
+    </div>
     `;
   }).join('');
 }
 
-function refreshAdminAthleteSelect() {
-  if (!adminAthlete) return;
-
-  const currentValue = adminAthlete.value;
-
-  adminAthlete.innerHTML =
-    '<option value="">Seleziona atleta</option>' +
-    athletesCache
-      .map(a => `<option value="${a.id}">${escapeHtml(a.full_name)}</option>`)
-      .join('');
-
-  if (currentValue && athletesCache.some(a => a.id === currentValue)) {
-    adminAthlete.value = currentValue;
-  }
-}
-
-function setEditMessage(athleteId, message, isError = false) {
-  const el = document.querySelector(`.athlete-edit-message[data-athlete-id="${athleteId}"]`);
-  if (!el) return;
-  el.textContent = message || '';
-  el.style.color = isError ? '#b00020' : '';
-}
-
-async function bootAdmin() {
-  if (adminBooted) return;
-  adminBooted = true;
-
-  loadStageOptions();
-  await loadAthletes();
-  await syncAllPublicProgress();
-  await loadScores();
-}
-
 async function loadAthletes() {
-  try {
-    const athletesRef = collection(db, 'athletes');
-    const q = query(athletesRef, orderBy('full_name', 'asc'));
-    const snapshot = await getDocs(q);
-
-    athletesCache = snapshot.docs.map(docSnap => ({
-      id: docSnap.id,
-      ...docSnap.data()
-    }));
-
-    refreshAdminAthleteSelect();
-    renderAthletesList();
-
-    if (athleteMessage) athleteMessage.textContent = '';
-  } catch (error) {
-    console.error(error);
-    if (athleteMessage) {
-      athleteMessage.textContent = 'Errore nel caricamento atleti.';
-    }
-  }
+  const snapshot = await getDocs(query(collection(db,'athletes')));
+  athletesCache = snapshot.docs.map(d => ({ id:d.id, ...d.data() }));
+  renderAthletesList();
 }
 
-async function loadScores() {
-  const athleteId = adminAthlete?.value;
+async function updateAthlete(id, formData) {
+  const last = formData.get('last_name').trim();
+  const first = formData.get('first_name').trim();
+  const pin = formData.get('pin').trim();
 
-  if (!athleteId) {
-    if (adminScores) {
-      adminScores.innerHTML = '<p class="status-text">Seleziona un atleta per vedere le valutazioni.</p>';
-    }
-    return;
+  const full_name = `${last} ${first}`;
+  const slug = slugify(full_name);
+
+  if (!isValidPin(pin)) return alert("PIN non valido");
+
+  const athlete = athletesCache.find(a => a.id === id);
+
+  await setDoc(doc(db,'athletes',id), {
+    full_name, slug, pin, updated_at: serverTimestamp()
+  }, { merge:true });
+
+  if (athlete.slug !== slug) {
+    await deleteDoc(doc(db,'public_progress', athlete.slug));
   }
 
-  try {
-    const data = await loadScoresByAthleteId(athleteId);
-
-    if (!data.length) {
-      adminScores.innerHTML = '<p class="status-text">Nessuna valutazione registrata.</p>';
-      return;
-    }
-
-    adminScores.innerHTML = data.map(item => `
-      <div class="score-card">
-        <strong>${labelDate(item.session_date)} · ${sessionTotal(item)} / 40 punti</strong>
-        <div class="score-line">
-          Presenza: ${item.attendance_points} ·
-          Applicazione: ${item.application_points} ·
-          Tecnico-tattico: ${item.technical_points} ·
-          Resilienza: ${item.resilience_points}
-        </div>
-        <div class="score-line">${escapeHtml(item.notes || 'Nessuna nota')}</div>
-      </div>
-    `).join('');
-
-    if (adminMessage) adminMessage.textContent = '';
-  } catch (error) {
-    console.error(error);
-    if (adminMessage) {
-      adminMessage.textContent = 'Errore nel caricamento valutazioni.';
-    }
-  }
-}
-
-async function slugAlreadyUsed(slug, excludeAthleteId = null) {
-  const athletesRef = collection(db, 'athletes');
-  const slugQuery = query(athletesRef, where('slug', '==', slug));
-  const slugSnapshot = await getDocs(slugQuery);
-
-  return slugSnapshot.docs.some((docSnap) => docSnap.id !== excludeAthleteId);
-}
-
-async function updateAthleteProfile(athleteId, formData) {
-  const athlete = athletesCache.find((item) => item.id === athleteId);
-  if (!athlete) return;
-
-  const lastName = formData.get('last_name')?.toString().trim() || '';
-  const firstName = formData.get('first_name')?.toString().trim() || '';
-
-  const fullName = `${lastName} ${firstName}`;
-  const slug = slugify(fullName);
-
-  const pin = formData.get('pin')?.toString().trim() || '';
-  const isActive = formData.get('is_active') === 'on';
-
-  if (!fullName) {
-    setEditMessage(athleteId, 'Nome non valido', true);
-    return;
-  }
-
-  if (!isValidPin(pin)) {
-    setEditMessage(athleteId, 'PIN non valido', true);
-    return;
-  }
-
-  try {
-    await setDoc(doc(db, 'athletes', athleteId), {
-      full_name: fullName,
-      slug,
-      pin,
-      is_active: isActive,
-      updated_at: serverTimestamp()
-    }, { merge: true });
-
-    if (athlete.slug !== slug) {
-      await deleteDoc(doc(db, 'public_progress', athlete.slug));
-    }
-
-    await syncPublicProgressForAthlete({
-      ...athlete,
-      full_name: fullName,
-      slug,
-      pin,
-      is_active: isActive
-    });
-
-    editingAthleteId = null;
-    await loadAthletes();
-
-  } catch (error) {
-    console.error(error);
-    setEditMessage(athleteId, 'Errore salvataggio', true);
-  }
-}
-
-}  // fine updateAthleteProfile
-
-
-// ⬇️ INCOLLA QUI
-async function deleteAthlete(athleteId) {
-  const athlete = athletesCache.find(a => a.id === athleteId);
-  if (!athlete) return;
-
-  try {
-    await deleteDoc(doc(db, 'athletes', athleteId));
-
-    if (athlete.slug) {
-      await deleteDoc(doc(db, 'public_progress', athlete.slug));
-    }
-
-    const scoresRef = collection(db, 'scores');
-    const q = query(scoresRef, where('athlete_id', '==', athleteId));
-    const snapshot = await getDocs(q);
-
-    for (const docSnap of snapshot.docs) {
-      await deleteDoc(doc(db, 'scores', docSnap.id));
-    }
-
-    await loadAthletes();
-
-  } catch (error) {
-    console.error(error);
-    alert("Errore eliminazione atleta");
-  }
-}
-
-loginForm?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (authMessage) authMessage.textContent = 'Accesso in corso...';
-
-  const email = document.getElementById('email')?.value.trim();
-  const password = document.getElementById('password')?.value;
-
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    if (authMessage) authMessage.textContent = 'Accesso effettuato.';
-  } catch (error) {
-    console.error(error);
-    if (authMessage) {
-      authMessage.textContent = 'Login non riuscito. Controlla email e password.';
-    }
-  }
-});
-
-logoutBtn?.addEventListener('click', async () => {
-  try {
-    await signOut(auth);
-    setLoggedOutUI();
-  } catch (error) {
-    console.error(error);
-  }
-});
-
-refreshAthletesBtn?.addEventListener('click', async () => {
+  editingAthleteId = null;
   await loadAthletes();
-  await syncAllPublicProgress();
-  await loadScores();
-});
-
-athleteForm?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-
-  const fullName = document.getElementById('fullName')?.value.trim();
-  const slugInput = document.getElementById('slug');
-  const slug = slugify(slugInput?.value.trim() || fullName || '');
-
-  if (slugInput) slugInput.value = slug;
-
-  if (!fullName || !slug) {
-    if (athleteMessage) {
-      athleteMessage.textContent = 'Inserisci nome atleta e slug valido.';
-    }
-    return;
-  }
-
-  try {
-    const athletesRef = collection(db, 'athletes');
-
-    const slugInUse = await slugAlreadyUsed(slug);
-    if (slugInUse) {
-      athleteMessage.textContent = 'Slug già usato. Scegline uno diverso.';
-      return;
-    }
-
-    const pin = generatePin();
-
-    const athleteDoc = await addDoc(athletesRef, {
-      full_name: fullName,
-      slug,
-      pin,
-      is_active: true,
-      created_at: serverTimestamp(),
-      updated_at: serverTimestamp()
-    });
-
-    await setDoc(doc(db, 'public_progress', slug), {
-      athlete_id: athleteDoc.id,
-      slug,
-      full_name: fullName,
-      is_active: true,
-      total_points: 0,
-      percent: 0,
-      target_points: TARGET_POINTS,
-      max_total_points: MAX_TOTAL_POINTS,
-      qualified: false,
-      stage_totals: STAGES.reduce((acc, date) => {
-        acc[date] = 0;
-        return acc;
-      }, {}),
-      updated_at: serverTimestamp()
-    });
-
-    athleteMessage.textContent = `Atleta salvato. Link personale: athlete.html?slug=${slug}`;
-    athleteForm.reset();
-
-    const slugField = document.getElementById('slug');
-    if (slugField) delete slugField.dataset.touched;
-
-    await loadAthletes();
-  } catch (error) {
-    console.error(error);
-    athleteMessage.textContent = 'Errore durante il salvataggio atleta.';
-  }
-});
-
-adminAthlete?.addEventListener('change', loadScores);
-
-document.getElementById('fullName')?.addEventListener('input', (e) => {
-  const currentSlug = document.getElementById('slug');
-  if (currentSlug && !currentSlug.dataset.touched) {
-    currentSlug.value = slugify(e.target.value);
-  }
-});
-
-document.getElementById('slug')?.addEventListener('input', (e) => {
-  e.target.dataset.touched = 'true';
-  e.target.value = slugify(e.target.value);
-});
-
-athletesList?.addEventListener('click', (e) => {
-
-  const generatePinBtn = e.target.closest('.generate-pin-btn');
-const deleteBtn = e.target.closest('.delete-athlete-btn');
-
-if (generatePinBtn) {
-  const athleteId = generatePinBtn.dataset.athleteId;
-  const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
-  const pinInput = formEl?.querySelector('input[name="pin"]');
-
-  if (pinInput) {
-    pinInput.value = generatePin();
-  }
 }
 
-if (deleteBtn) {
-  const athleteId = deleteBtn.dataset.athleteId;
+async function deleteAthlete(id) {
+  if (!confirm("Eliminare atleta?")) return;
 
-  const confirmDelete = confirm("Sei sicuro di voler eliminare questo atleta?");
-  if (!confirmDelete) return;
+  const athlete = athletesCache.find(a => a.id === id);
 
-  deleteAthlete(athleteId);
+  await deleteDoc(doc(db,'athletes',id));
+
+  if (athlete.slug) {
+    await deleteDoc(doc(db,'public_progress', athlete.slug));
+  }
+
+  const q = query(collection(db,'scores'), where('athlete_id','==',id));
+  const snap = await getDocs(q);
+
+  for (const d of snap.docs) {
+    await deleteDoc(doc(db,'scores', d.id));
+  }
+
+  await loadAthletes();
 }
 
-  const editBtn = e.target.closest('.edit-athlete-btn');
-  const cancelBtn = e.target.closest('.cancel-edit-athlete-btn');
-  const generatePinBtn = e.target.closest('.generate-pin-btn');
+athletesList.addEventListener('click', e => {
 
-  if (editBtn) {
-    const athleteId = editBtn.dataset.athleteId;
-    editingAthleteId = editingAthleteId === athleteId ? null : athleteId;
+  const edit = e.target.closest('.edit-btn');
+  const gen = e.target.closest('.gen-pin');
+  const del = e.target.closest('.delete-btn');
+
+  if (edit) {
+    editingAthleteId = editingAthleteId === edit.dataset.id ? null : edit.dataset.id;
     renderAthletesList();
-    return;
   }
 
-  if (cancelBtn) {
-    editingAthleteId = null;
-    renderAthletesList();
-    return;
+  if (gen) {
+    const form = document.querySelector(`form[data-id="${gen.dataset.id}"]`);
+    form.querySelector('[name=pin]').value = generatePin();
   }
 
-  if (generatePinBtn) {
-    const athleteId = generatePinBtn.dataset.athleteId;
-    const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
-    const pinInput = formEl?.querySelector('input[name="pin"]');
-    if (pinInput) {
-      pinInput.value = generatePin();
-      pinInput.dispatchEvent(new Event('input', { bubbles: true }));
-    }
+  if (del) {
+    deleteAthlete(del.dataset.id);
   }
 });
 
-athletesList?.addEventListener('input', (e) => {
-  const target = e.target;
-  if (!(target instanceof HTMLInputElement)) return;
-
-  if (target.name === 'slug') {
-    target.value = slugify(target.value);
-  }
-
-  if (target.name === 'pin') {
-    target.value = target.value.replace(/\D/g, '').slice(0, 8);
-  }
-});
-
-athletesList?.addEventListener('submit', async (e) => {
-  const form = e.target.closest('.edit-athlete-form');
-  if (!form) return;
-
+athletesList.addEventListener('submit', async e => {
   e.preventDefault();
-
-  const athleteId = form.dataset.athleteId;
-  const formData = new FormData(form);
-
-  await updateAthleteProfile(athleteId, formData);
+  const form = e.target;
+  await updateAthlete(form.dataset.id, new FormData(form));
 });
 
-scoreForm?.addEventListener('submit', async (e) => {
+loginForm?.addEventListener('submit', async e => {
   e.preventDefault();
-
-  const payload = {
-    athlete_id: adminAthlete?.value || '',
-    session_date: sessionDate?.value || '',
-    attendance_points: Number(document.getElementById('attendance')?.value || 0),
-    application_points: Number(document.getElementById('application')?.value || 0),
-    technical_points: Number(document.getElementById('technical')?.value || 0),
-    resilience_points: Number(document.getElementById('resilience')?.value || 0),
-    notes: document.getElementById('notes')?.value.trim() || '',
-    updated_at: serverTimestamp()
-  };
-
-  if (!payload.athlete_id || !payload.session_date) {
-    if (adminMessage) adminMessage.textContent = 'Seleziona atleta e data.';
-    return;
-  }
-
-  try {
-    const docId = `${payload.athlete_id}_${payload.session_date}`;
-
-    await setDoc(doc(db, 'scores', docId), {
-      ...payload,
-      created_at: serverTimestamp()
-    }, { merge: true });
-
-    const athlete = athletesCache.find((item) => item.id === payload.athlete_id);
-    if (athlete) {
-      await syncPublicProgressForAthlete(athlete);
-    }
-
-    if (adminMessage) {
-      adminMessage.textContent = 'Valutazione salvata correttamente.';
-    }
-
-    scoreForm.reset();
-
-    const attendance = document.getElementById('attendance');
-    const application = document.getElementById('application');
-    const technical = document.getElementById('technical');
-    const resilience = document.getElementById('resilience');
-
-    if (attendance) attendance.value = 10;
-    if (application) application.value = 6;
-    if (technical) technical.value = 6;
-    if (resilience) resilience.value = 6;
-    if (adminAthlete) adminAthlete.value = payload.athlete_id;
-    if (sessionDate) sessionDate.value = payload.session_date;
-
-    await loadScores();
-  } catch (error) {
-    console.error(error);
-    if (adminMessage) {
-      adminMessage.textContent = 'Errore durante il salvataggio.';
-    }
-  }
+  const email = document.getElementById('email').value;
+  const pass = document.getElementById('password').value;
+  await signInWithEmailAndPassword(auth,email,pass);
 });
 
-onAuthStateChanged(auth, async (user) => {
+logoutBtn?.addEventListener('click', () => signOut(auth));
+
+refreshAthletesBtn?.addEventListener('click', loadAthletes);
+
+onAuthStateChanged(auth, user => {
   if (user) {
-    setAuthenticatedUI(user);
-    await bootAdmin();
+    authCard.classList.add('hidden');
+    adminApp.classList.remove('hidden');
+    loadAthletes();
   } else {
-    adminBooted = false;
-    setLoggedOutUI();
+    authCard.classList.remove('hidden');
+    adminApp.classList.add('hidden');
   }
 });
