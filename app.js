@@ -193,3 +193,15 @@ window.unlock = function () {
     document.getElementById("pin-error").style.display = "block";
   }
 };
+
+const athleteLogoutBtn = document.getElementById('logoutBtn');
+
+athleteLogoutBtn?.addEventListener('click', () => {
+  if (currentSlug) {
+    sessionStorage.removeItem(`access_${currentSlug}`);
+    sessionStorage.removeItem(`prefill_pin_${currentSlug}`);
+  }
+
+  sessionStorage.removeItem('athlete_slug');
+  window.location.href = 'https://road-to-riccione.vercel.app/';
+});
