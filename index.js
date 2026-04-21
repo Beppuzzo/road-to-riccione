@@ -776,22 +776,31 @@ athleteLogoutBtn?.addEventListener('click', () => {
    EVENTS - ADMIN LOGIN
 ----------------------------- */
 loginForm?.addEventListener('submit', async (e) => {
-  e.preventDefault();
-  if (authMessage) authMessage.textContent = 'Accesso in corso...';
-
-  const email = document.getElementById('email')?.value.trim();
-  const password = document.getElementById('password')?.value;
-
-  try {
-    await signInWithEmailAndPassword(auth, email, password);
-    if (authMessage) authMessage.textContent = '';
-  } catch (error) {
-    console.error(error);
-    if (authMessage) {
-      authMessage.textContent = 'Login non riuscito. Controlla email e password.';
+    e.preventDefault();
+  
+    if (authMessage) authMessage.textContent = 'Accesso in corso...';
+  
+    const email = document.getElementById('email')?.value.trim();
+    const password = document.getElementById('password')?.value;
+  
+    try {
+      const userCredential = await signInWithEmailAndPassword(auth, email, password);
+  
+      // pulizia eventuale sessione atleta
+      athleteLogout();
+  
+      // mostra subito area admin
+      showAdminApp(userCredential.user);
+      await bootAdmin();
+  
+      if (authMessage) authMessage.textContent = '';
+    } catch (error) {
+      console.error(error);
+      if (authMessage) {
+        authMessage.textContent = `Login non riuscito: ${error.message}`;
+      }
     }
-  }
-});
+  });
 
 logoutBtn?.addEventListener('click', async () => {
   try {
