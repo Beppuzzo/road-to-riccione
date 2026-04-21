@@ -140,13 +140,31 @@ async function loadAthleteDashboard(slug) {
   }
 }
 
-const slug = getSlugFromUrl();
+async function init() {
+  if (!currentSlug) {
+    showEmpty('Manca lo slug dell’atleta nel link.');
+    return;
+  }
 
-if (!slug) {
-  showEmpty('Manca lo slug dell’atleta nel link.');
-} else {
-  loadAthleteDashboard(slug);
+  currentAthlete = await loadAthlete();
+
+  if (!currentAthlete) {
+    showEmpty('Atleta non trovato.');
+    return;
+  }
+
+  const access = sessionStorage.getItem(`access_${currentSlug}`);
+
+  if (access === "ok") {
+    document.getElementById("pin-gate").style.display = "none";
+    document.getElementById("dashboard").classList.remove("hidden");
+    loadAthleteDashboard(currentSlug);
+  } else {
+    document.getElementById("dashboard").classList.add("hidden");
+  }
 }
+
+init();
 
 window.unlock = function () {
   const input = document.getElementById("pin-input").value;
