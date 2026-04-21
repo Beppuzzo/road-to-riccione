@@ -14,7 +14,8 @@ import {
   where,
   setDoc,
   doc,
-  serverTimestamp
+  serverTimestamp,
+  deleteDoc
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const STAGES = [
@@ -52,6 +53,7 @@ const adminScores = document.getElementById('adminScores');
 
 let athletesCache = [];
 let adminBooted = false;
+let editingAthleteId = null;
 
 function sessionTotal(score) {
   return (
@@ -78,6 +80,19 @@ function slugify(value) {
 
 function generatePin() {
   return String(Math.floor(10000000 + Math.random() * 90000000));
+}
+
+function isValidPin(pin) {
+  return /^\d{8}$/.test(String(pin || ''));
+}
+
+function escapeHtml(value) {
+  return String(value ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
 
 function buildStageTotals(scores = []) {
@@ -153,6 +168,135 @@ async function syncAllPublicProgress() {
   }
 }
 
+function renderAthletesList() {
+  if (!athletesList) return;
+
+  if (!athletesCache.length) {
+    athletesList.innerHTML = '<p class="status-text">Nessun atleta registrato.</p>';
+    return;
+  }
+
+  athletesList.innerHTML = athletesCache.map((a) => {
+    const isEditing = editingAthleteId === a.id;
+    const safeName = escapeHtml(a.full_name || '');
+    const safeSlug = escapeHtml(a.slug || '');
+    const safePin = escapeHtml(a.pin || '');
+    const statusLabel = a.is_active === false ? 'Inattivo' : 'Attivo';
+
+    return `
+      <div class="score-card" data-athlete-id="${a.id}">
+        <strong>${safeName}</strong>
+        <div class="score-line">Slug: ${safeSlug}</div>
+        <div class="score-line">PIN: ${safePin || 'Non assegnato'}</div>
+        <div class="score-line">Stato: ${statusLabel}</div>
+        <div class="score-line">
+          Link personale:
+          <a href="athlete.html?slug=${encodeURIComponent(a.slug || '')}" target="_blank" rel="noopener noreferrer">
+            athlete.html?slug=${safeSlug}
+          </a>
+        </div>
+        <div class="score-line" style="margin-top:10px;">
+          <button type="button" class="edit-athlete-btn" data-athlete-id="${a.id}">
+            ${isEditing ? 'Chiudi modifica' : 'Modifica'}
+          </button>
+        </div>
+
+        ${isEditing ? `
+          <form class="edit-athlete-form" data-athlete-id="${a.id}" style="margin-top:12px;">
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                Nome atleta<br>
+                <input
+                  type="text"
+                  name="full_name"
+                  value="${safeName}"
+                  required
+                  style="width:100%;margin-top:4px;"
+                >
+              </label>
+            </div>
+
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                Slug<br>
+                <input
+                  type="text"
+                  name="slug"
+                  value="${safeSlug}"
+                  required
+                  style="width:100%;margin-top:4px;"
+                >
+              </label>
+            </div>
+
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                PIN (8 cifre)<br>
+                <input
+                  type="text"
+                  name="pin"
+                  value="${safePin}"
+                  inputmode="numeric"
+                  maxlength="8"
+                  pattern="\\d{8}"
+                  required
+                  style="width:100%;margin-top:4px;"
+                >
+              </label>
+            </div>
+
+            <div class="score-line" style="margin-bottom:8px;">
+              <label>
+                <input
+                  type="checkbox"
+                  name="is_active"
+                  ${a.is_active === false ? '' : 'checked'}
+                >
+                Atleta attivo
+              </label>
+            </div>
+
+            <div class="score-line" style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button type="submit">Salva</button>
+              <button type="button" class="generate-pin-btn" data-athlete-id="${a.id}">
+                Genera PIN
+              </button>
+              <button type="button" class="cancel-edit-athlete-btn" data-athlete-id="${a.id}">
+                Annulla
+              </button>
+            </div>
+
+            <div class="score-line athlete-edit-message" data-athlete-id="${a.id}" style="margin-top:10px;"></div>
+          </form>
+        ` : ''}
+      </div>
+    `;
+  }).join('');
+}
+
+function refreshAdminAthleteSelect() {
+  if (!adminAthlete) return;
+
+  const currentValue = adminAthlete.value;
+
+  adminAthlete.innerHTML =
+    '<option value="">Seleziona atleta</option>' +
+    athletesCache
+      .map(a => `<option value="${a.id}">${escapeHtml(a.full_name)}</option>`)
+      .join('');
+
+  if (currentValue && athletesCache.some(a => a.id === currentValue)) {
+    adminAthlete.value = currentValue;
+  }
+}
+
+function setEditMessage(athleteId, message, isError = false) {
+  const el = document.querySelector(`.athlete-edit-message[data-athlete-id="${athleteId}"]`);
+  if (!el) return;
+  el.textContent = message || '';
+  el.style.color = isError ? '#b00020' : '';
+}
+
 async function bootAdmin() {
   if (adminBooted) return;
   adminBooted = true;
@@ -174,30 +318,8 @@ async function loadAthletes() {
       ...docSnap.data()
     }));
 
-    if (adminAthlete) {
-      adminAthlete.innerHTML =
-        '<option value="">Seleziona atleta</option>' +
-        athletesCache
-          .map(a => `<option value="${a.id}">${a.full_name}</option>`)
-          .join('');
-    }
-
-    if (athletesList) {
-      athletesList.innerHTML = athletesCache.length
-        ? athletesCache.map(a => `
-          <div class="score-card">
-            <strong>${a.full_name}</strong>
-            <div class="score-line">Slug: ${a.slug}</div>
-            <div class="score-line">
-              Link personale:
-              <a href="athlete.html?slug=${encodeURIComponent(a.slug)}" target="_blank" rel="noopener noreferrer">
-                athlete.html?slug=${a.slug}
-              </a>
-            </div>
-          </div>
-        `).join('')
-        : '<p class="status-text">Nessun atleta registrato.</p>';
-    }
+    refreshAdminAthleteSelect();
+    renderAthletesList();
 
     if (athleteMessage) athleteMessage.textContent = '';
   } catch (error) {
@@ -235,7 +357,7 @@ async function loadScores() {
           Tecnico-tattico: ${item.technical_points} ·
           Resilienza: ${item.resilience_points}
         </div>
-        <div class="score-line">${item.notes || 'Nessuna nota'}</div>
+        <div class="score-line">${escapeHtml(item.notes || 'Nessuna nota')}</div>
       </div>
     `).join('');
 
@@ -245,6 +367,92 @@ async function loadScores() {
     if (adminMessage) {
       adminMessage.textContent = 'Errore nel caricamento valutazioni.';
     }
+  }
+}
+
+async function slugAlreadyUsed(slug, excludeAthleteId = null) {
+  const athletesRef = collection(db, 'athletes');
+  const slugQuery = query(athletesRef, where('slug', '==', slug));
+  const slugSnapshot = await getDocs(slugQuery);
+
+  return slugSnapshot.docs.some((docSnap) => docSnap.id !== excludeAthleteId);
+}
+
+async function updateAthleteProfile(athleteId, formData) {
+  const athlete = athletesCache.find((item) => item.id === athleteId);
+
+  if (!athlete) {
+    setEditMessage(athleteId, 'Atleta non trovato.', true);
+    return;
+  }
+
+  const fullName = formData.get('full_name')?.toString().trim() || '';
+  const rawSlug = formData.get('slug')?.toString().trim() || '';
+  const slug = slugify(rawSlug);
+  const pin = formData.get('pin')?.toString().trim() || '';
+  const isActive = formData.get('is_active') === 'on';
+
+  const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
+  const slugInput = formEl?.querySelector('input[name="slug"]');
+  const pinInput = formEl?.querySelector('input[name="pin"]');
+
+  if (slugInput) slugInput.value = slug;
+  if (pinInput) pinInput.value = pin.replace(/\D/g, '').slice(0, 8);
+
+  if (!fullName || !slug) {
+    setEditMessage(athleteId, 'Nome atleta e slug sono obbligatori.', true);
+    return;
+  }
+
+  if (!isValidPin(pin)) {
+    setEditMessage(athleteId, 'Il PIN deve avere esattamente 8 cifre.', true);
+    return;
+  }
+
+  try {
+    const slugInUse = await slugAlreadyUsed(slug, athleteId);
+    if (slugInUse) {
+      setEditMessage(athleteId, 'Slug già usato. Scegline uno diverso.', true);
+      return;
+    }
+
+    setEditMessage(athleteId, 'Salvataggio in corso...');
+
+    await setDoc(doc(db, 'athletes', athleteId), {
+      full_name: fullName,
+      slug,
+      pin,
+      is_active: isActive,
+      updated_at: serverTimestamp()
+    }, { merge: true });
+
+    if (athlete.slug && athlete.slug !== slug) {
+      await deleteDoc(doc(db, 'public_progress', athlete.slug));
+    }
+
+    const updatedAthlete = {
+      ...athlete,
+      full_name: fullName,
+      slug,
+      pin,
+      is_active: isActive
+    };
+
+    await syncPublicProgressForAthlete(updatedAthlete);
+
+    editingAthleteId = null;
+    await loadAthletes();
+
+    if (adminAthlete?.value === athleteId) {
+      await loadScores();
+    }
+
+    if (athleteMessage) {
+      athleteMessage.textContent = `Atleta aggiornato correttamente: ${fullName}`;
+    }
+  } catch (error) {
+    console.error(error);
+    setEditMessage(athleteId, 'Errore durante il salvataggio.', true);
   }
 }
 
@@ -300,24 +508,22 @@ athleteForm?.addEventListener('submit', async (e) => {
   try {
     const athletesRef = collection(db, 'athletes');
 
-    const slugQuery = query(athletesRef, where('slug', '==', slug));
-    const slugSnapshot = await getDocs(slugQuery);
-
-    if (!slugSnapshot.empty) {
+    const slugInUse = await slugAlreadyUsed(slug);
+    if (slugInUse) {
       athleteMessage.textContent = 'Slug già usato. Scegline uno diverso.';
       return;
     }
 
     const pin = generatePin();
 
-const athleteDoc = await addDoc(athletesRef, {
-  full_name: fullName,
-  slug,
-  pin,
-  is_active: true,
-  created_at: serverTimestamp(),
-  updated_at: serverTimestamp()
-});
+    const athleteDoc = await addDoc(athletesRef, {
+      full_name: fullName,
+      slug,
+      pin,
+      is_active: true,
+      created_at: serverTimestamp(),
+      updated_at: serverTimestamp()
+    });
 
     await setDoc(doc(db, 'public_progress', slug), {
       athlete_id: athleteDoc.id,
@@ -361,6 +567,60 @@ document.getElementById('fullName')?.addEventListener('input', (e) => {
 document.getElementById('slug')?.addEventListener('input', (e) => {
   e.target.dataset.touched = 'true';
   e.target.value = slugify(e.target.value);
+});
+
+athletesList?.addEventListener('click', (e) => {
+  const editBtn = e.target.closest('.edit-athlete-btn');
+  const cancelBtn = e.target.closest('.cancel-edit-athlete-btn');
+  const generatePinBtn = e.target.closest('.generate-pin-btn');
+
+  if (editBtn) {
+    const athleteId = editBtn.dataset.athleteId;
+    editingAthleteId = editingAthleteId === athleteId ? null : athleteId;
+    renderAthletesList();
+    return;
+  }
+
+  if (cancelBtn) {
+    editingAthleteId = null;
+    renderAthletesList();
+    return;
+  }
+
+  if (generatePinBtn) {
+    const athleteId = generatePinBtn.dataset.athleteId;
+    const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
+    const pinInput = formEl?.querySelector('input[name="pin"]');
+    if (pinInput) {
+      pinInput.value = generatePin();
+      pinInput.dispatchEvent(new Event('input', { bubbles: true }));
+    }
+  }
+});
+
+athletesList?.addEventListener('input', (e) => {
+  const target = e.target;
+  if (!(target instanceof HTMLInputElement)) return;
+
+  if (target.name === 'slug') {
+    target.value = slugify(target.value);
+  }
+
+  if (target.name === 'pin') {
+    target.value = target.value.replace(/\D/g, '').slice(0, 8);
+  }
+});
+
+athletesList?.addEventListener('submit', async (e) => {
+  const form = e.target.closest('.edit-athlete-form');
+  if (!form) return;
+
+  e.preventDefault();
+
+  const athleteId = form.dataset.athleteId;
+  const formData = new FormData(form);
+
+  await updateAthleteProfile(athleteId, formData);
 });
 
 scoreForm?.addEventListener('submit', async (e) => {
