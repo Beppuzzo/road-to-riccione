@@ -235,7 +235,17 @@ function renderAthletesList() {
               </label>
             </div>
 
-            <button type="submit">Salva</button>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:10px;">
+  <button type="submit">Salva</button>
+
+  <button type="button" class="generate-pin-btn" data-athlete-id="${a.id}">
+    Genera PIN
+  </button>
+
+  <button type="button" class="delete-athlete-btn" data-athlete-id="${a.id}" style="background:#b00020;color:white;">
+    Elimina atleta
+  </button>
+</div>
 
             <div class="athlete-edit-message" data-athlete-id="${a.id}"></div>
           </form>
@@ -402,6 +412,37 @@ async function updateAthleteProfile(athleteId, formData) {
   }
 }
 
+}  // fine updateAthleteProfile
+
+
+// ⬇️ INCOLLA QUI
+async function deleteAthlete(athleteId) {
+  const athlete = athletesCache.find(a => a.id === athleteId);
+  if (!athlete) return;
+
+  try {
+    await deleteDoc(doc(db, 'athletes', athleteId));
+
+    if (athlete.slug) {
+      await deleteDoc(doc(db, 'public_progress', athlete.slug));
+    }
+
+    const scoresRef = collection(db, 'scores');
+    const q = query(scoresRef, where('athlete_id', '==', athleteId));
+    const snapshot = await getDocs(q);
+
+    for (const docSnap of snapshot.docs) {
+      await deleteDoc(doc(db, 'scores', docSnap.id));
+    }
+
+    await loadAthletes();
+
+  } catch (error) {
+    console.error(error);
+    alert("Errore eliminazione atleta");
+  }
+}
+
 loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
   if (authMessage) authMessage.textContent = 'Accesso in corso...';
@@ -516,6 +557,29 @@ document.getElementById('slug')?.addEventListener('input', (e) => {
 });
 
 athletesList?.addEventListener('click', (e) => {
+
+  const generatePinBtn = e.target.closest('.generate-pin-btn');
+const deleteBtn = e.target.closest('.delete-athlete-btn');
+
+if (generatePinBtn) {
+  const athleteId = generatePinBtn.dataset.athleteId;
+  const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
+  const pinInput = formEl?.querySelector('input[name="pin"]');
+
+  if (pinInput) {
+    pinInput.value = generatePin();
+  }
+}
+
+if (deleteBtn) {
+  const athleteId = deleteBtn.dataset.athleteId;
+
+  const confirmDelete = confirm("Sei sicuro di voler eliminare questo atleta?");
+  if (!confirmDelete) return;
+
+  deleteAthlete(athleteId);
+}
+
   const editBtn = e.target.closest('.edit-athlete-btn');
   const cancelBtn = e.target.closest('.cancel-edit-athlete-btn');
   const generatePinBtn = e.target.closest('.generate-pin-btn');
