@@ -9,6 +9,7 @@ import {
   collection,
   addDoc,
   getDocs,
+  getDoc,
   query,
   orderBy,
   where,
@@ -44,6 +45,7 @@ const sessionInfo = document.getElementById('sessionInfo');
 const athleteForm = document.getElementById('athleteForm');
 const athleteMessage = document.getElementById('athleteMessage');
 const athletesList = document.getElementById('athletesList');
+const athletesSummary = document.getElementById('athletesSummary');
 
 const adminAthlete = document.getElementById('adminAthlete');
 const sessionDate = document.getElementById('sessionDate');
@@ -309,6 +311,58 @@ function renderAthletesList() {
   }).join('');
 }
 
+function renderAthletesSummary() {
+  if (!athletesSummary) return;
+
+  if (!athletesCache.length) {
+    athletesSummary.innerHTML = '<p class="status-text">Nessun atleta.</p>';
+    return;
+  }
+
+  const sorted = [...athletesCache].sort((a, b) => {
+    return (b.total_points || 0) - (a.total_points || 0);
+  });
+
+  athletesSummary.innerHTML = sorted.map(a => {
+    const total = Number(a.total_points || 0);
+    const percent = Math.round((total / MAX_TOTAL_POINTS) * 100);
+
+    return `
+      <div class="score-card">
+        <strong>${escapeHtml(a.full_name)}</strong>
+
+        <div class="score-line">
+          ${total} / ${MAX_TOTAL_POINTS} punti
+        </div>
+
+        <div style="margin-top:8px;">
+          <div style="
+            height:10px;
+            background:rgba(255,255,255,0.1);
+            border-radius:10px;
+            overflow:hidden;
+          ">
+            <div style="
+              width:${percent}%;
+              height:100%;
+              background:${percent >= 70 ? '#59e3a7' : '#48c7f9'};
+              transition:width 0.3s;
+            "></div>
+          </div>
+
+          <div style="
+            font-size:0.85rem;
+            margin-top:4px;
+            color:#c8d4e4;
+          ">
+            ${percent}%
+          </div>
+        </div>
+      </div>
+    `;
+  }).join('');
+}
+
 function refreshAdminAthleteSelect() {
   if (!adminAthlete) return;
 
@@ -353,8 +407,15 @@ async function loadAthletes() {
       ...docSnap.data()
     }));
 
+    for (const athlete of athletesCache) {
+      const progressSnap = await getDoc(doc(db, 'public_progress', athlete.slug));
+      const progress = progressSnap.exists() ? progressSnap.data() : null;
+      athlete.total_points = progress?.total_points || 0;
+    }
+
     refreshAdminAthleteSelect();
     renderAthletesList();
+    renderAthletesSummary();
 
     if (athleteMessage) athleteMessage.textContent = '';
   } catch (error) {
@@ -767,6 +828,7 @@ scoreForm?.addEventListener('submit', async (e) => {
     if (adminAthlete) adminAthlete.value = payload.athlete_id;
     if (sessionDate) sessionDate.value = payload.session_date;
 
+    await loadAthletes();
     await loadScores();
   } catch (error) {
     console.error(error);
