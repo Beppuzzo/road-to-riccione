@@ -16,7 +16,7 @@
       <div>
         <p class="eyebrow">Road to Riccione</p>
         <h1>Campionati Italiani U14</h1>
-        <p class="subtitle">Inserisci il tuo link personale oppure il tuo codice atleta per vedere il percorso verso Riccione.</p>
+        <p class="subtitle">Scegli la tua area di accesso per visualizzare il percorso atleta oppure entrare nel pannello tecnico.</p>
       </div>
       <div class="hero-meta">
         <div class="meta-box">
@@ -32,7 +32,7 @@
 
     <section class="card form-card">
       <div class="timeline-header">
-        <h3>Apri il tuo percorso</h3>
+        <h3>Autenticazione ATLETA</h3>
         <p>Ogni atleta può ricevere un link personale, ad esempio <strong>athlete.html?slug=mario-rossi</strong>.</p>
       </div>
       <form id="lookupForm" class="lookup-row">
@@ -41,10 +41,26 @@
           <input id="slugInput" type="text" placeholder="es. mario-rossi" autocomplete="off" />
         </div>
         <div class="lookup-button-wrap">
-          <button type="submit" class="primary-btn">Apri dashboard</button>
+          <button type="submit" class="primary-btn">Apri dashboard atleta</button>
         </div>
       </form>
       <p class="status-text" id="lookupStatus">Se hai ricevuto un link personale, aprilo direttamente.</p>
+    </section>
+
+    <section class="card form-card">
+      <div class="timeline-header">
+        <h3>Autenticazione ADMIN</h3>
+        <p>Accesso riservato allo staff tecnico per inserimento valutazioni e gestione atleti.</p>
+      </div>
+      <div style="display:flex; justify-content:center;">
+        <a
+          href="admin.html"
+          class="primary-btn"
+          style="display:inline-block; text-decoration:none; text-align:center;"
+        >
+          Accedi al pannello admin
+        </a>
+      </div>
     </section>
 
     <section class="footer-note">
