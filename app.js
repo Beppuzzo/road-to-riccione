@@ -154,13 +154,26 @@ async function init() {
   }
 
   const access = sessionStorage.getItem(`access_${currentSlug}`);
+  const prefillPin = sessionStorage.getItem(`prefill_pin_${currentSlug}`);
 
+  // 🔥 NUOVA LOGICA COMPLETA
   if (access === "ok") {
     document.getElementById("pin-gate").style.display = "none";
-    document.getElementById("dashboard").classList.remove("hidden");
+    dashboard.classList.remove("hidden");
     loadAthleteDashboard(currentSlug);
+
+  } else if (prefillPin && prefillPin === currentAthlete.pin) {
+    // 👉 accesso automatico da homepage
+    sessionStorage.setItem(`access_${currentSlug}`, "ok");
+    sessionStorage.removeItem(`prefill_pin_${currentSlug}`);
+
+    document.getElementById("pin-gate").style.display = "none";
+    dashboard.classList.remove("hidden");
+
+    loadAthleteDashboard(currentSlug);
+
   } else {
-    document.getElementById("dashboard").classList.add("hidden");
+    dashboard.classList.add("hidden");
   }
 }
 
@@ -173,7 +186,7 @@ window.unlock = function () {
     sessionStorage.setItem(`access_${currentSlug}`, "ok");
 
     document.getElementById("pin-gate").style.display = "none";
-    document.getElementById("dashboard").classList.remove("hidden");
+    dashboard.classList.remove("hidden");
 
     loadAthleteDashboard(currentSlug);
   } else {
