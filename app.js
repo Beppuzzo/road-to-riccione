@@ -1,7 +1,11 @@
 import { db } from './firebase-config.js';
 import {
   doc,
-  getDoc
+  getDoc,
+  collection,
+  query,
+  where,
+  getDocs
 } from "https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore.js";
 
 const MAX_TOTAL_POINTS = 360;
@@ -17,6 +21,9 @@ const STAGES = [
   '2026-04-29',
   '2026-05-04'
 ];
+
+let currentAthlete = null;
+let currentSlug = getSlugFromUrl();
 
 const dashboard = document.getElementById('dashboard');
 const athleteNameEl = document.getElementById('athleteName');
@@ -44,6 +51,19 @@ function getBadge(points) {
 function getSlugFromUrl() {
   const params = new URLSearchParams(window.location.search);
   return params.get('slug')?.trim().toLowerCase() || '';
+}
+
+async function loadAthlete() {
+  const q = query(
+    collection(db, "athletes"),
+    where("slug", "==", currentSlug)
+  );
+
+  const snapshot = await getDocs(q);
+
+  if (snapshot.empty) return null;
+
+  return snapshot.docs[0].data();
 }
 
 function showEmpty(message) {
@@ -127,3 +147,18 @@ if (!slug) {
 } else {
   loadAthleteDashboard(slug);
 }
+
+window.unlock = function () {
+  const input = document.getElementById("pin-input").value;
+
+  if (input === currentAthlete?.pin) {
+    sessionStorage.setItem(`access_${currentSlug}`, "ok");
+
+    document.getElementById("pin-gate").style.display = "none";
+    document.getElementById("dashboard").classList.remove("hidden");
+
+    loadAthleteDashboard(currentSlug);
+  } else {
+    document.getElementById("pin-error").style.display = "block";
+  }
+};
