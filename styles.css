@@ -249,6 +249,26 @@ button { cursor: pointer; }
   display: flex;
   gap: 12px;
 }
+
+/* Riepilogo atleti admin */
+#athletesSummary .score-card {
+  padding: 14px 16px;
+}
+
+#athletesSummary .score-card strong {
+  margin-bottom: 4px;
+}
+
+#athletesSummary .score-line {
+  font-size: 0.92rem;
+  line-height: 1.35;
+}
+
+#athletesSummary .score-card > div[style*="display:grid"] {
+  column-gap: 14px !important;
+  row-gap: 8px !important;
+}
+
 @media (max-width: 760px) {
   .hero,
   .summary,
@@ -258,4 +278,8 @@ button { cursor: pointer; }
   .form-grid,
   .lookup-row { grid-template-columns: 1fr; }
   .toolbar-actions { width: 100%; flex-direction: column; }
+
+  #athletesSummary .score-card > div[style*="display:grid"] {
+    grid-template-columns: 1fr !important;
+  }
 }
