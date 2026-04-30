@@ -55,6 +55,7 @@ const adminScores = document.getElementById('adminScores');
 let athletesCache = [];
 let adminBooted = false;
 let editingAthleteId = null;
+let openedSummaryAthleteId = null;
 
 function sessionTotal(score) {
   return (
@@ -331,9 +332,10 @@ function renderAthletesSummary() {
     const percent = Math.round((total / MAX_TOTAL_POINTS) * 100);
     const presencesTotal = Number(a.presences_total || 0);
     const lastEvaluatedDate = a.last_evaluated_date ? labelDate(a.last_evaluated_date) : 'Non ancora valutata';
+    const isOpened = openedSummaryAthleteId === a.id;
 
     return `
-      <div class="score-card">
+      <div class="score-card" data-summary-athlete-id="${a.id}">
         <strong>${escapeHtml(a.full_name)}</strong>
 
         <div style="
@@ -385,13 +387,129 @@ function renderAthletesSummary() {
               data-athlete-id="${a.id}"
               style="padding:10px 12px;font-size:0.88rem;"
             >
-              Vedi dettagli
+              ${isOpened ? 'Chiudi dettagli' : 'Vedi dettagli'}
             </button>
           </div>
         </div>
+
+        ${isOpened ? `
+          <div
+            class="athlete-inline-details"
+            data-inline-details-athlete-id="${a.id}"
+            style="
+              margin-top:14px;
+              padding-top:14px;
+              border-top:1px solid rgba(255,255,255,0.1);
+              display:grid;
+              gap:10px;
+            "
+          >
+            <p class="status-text">Caricamento dettaglio valutazioni...</p>
+          </div>
+        ` : ''}
       </div>
     `;
   }).join('');
+}
+
+async function renderInlineAthleteDetails(athleteId) {
+  const detailsEl = document.querySelector(`.athlete-inline-details[data-inline-details-athlete-id="${athleteId}"]`);
+  if (!detailsEl) return;
+
+  const athlete = athletesCache.find((item) => item.id === athleteId);
+
+  if (!athlete) {
+    detailsEl.innerHTML = '<p class="status-text">Atleta non trovato.</p>';
+    return;
+  }
+
+  try {
+    const data = await loadScoresByAthleteId(athleteId);
+    const scoresByDate = data.reduce((acc, item) => {
+      acc[item.session_date] = item;
+      return acc;
+    }, {});
+
+    detailsEl.innerHTML = `
+      <div class="score-line" style="margin-bottom:4px;">
+        Dettaglio valutazioni di <strong style="display:inline;margin:0;">${escapeHtml(athlete.full_name)}</strong>
+      </div>
+
+      ${STAGES.map((date) => {
+        const item = scoresByDate[date];
+
+        if (!item) {
+          return `
+            <div
+              class="score-card"
+              data-athlete-id="${athleteId}"
+              data-session-date="${date}"
+              style="background:rgba(255,255,255,0.025);"
+            >
+              <strong>${labelDate(date)} · Non valutata</strong>
+              <div class="score-line">Nessuna valutazione registrata per questa data.</div>
+              <div class="score-line" style="margin-top:10px;">
+                <button
+                  type="button"
+                  class="inline-insert-score-btn"
+                  data-athlete-id="${athleteId}"
+                  data-session-date="${date}"
+                >
+                  Inserisci
+                </button>
+              </div>
+            </div>
+          `;
+        }
+
+        return `
+          <div
+            class="score-card"
+            data-score-id="${item.id}"
+            data-athlete-id="${athleteId}"
+            data-session-date="${date}"
+            style="background:rgba(255,255,255,0.025);"
+          >
+            <strong>${labelDate(date)} · ${sessionTotal(item)} / 40 punti</strong>
+
+            <div class="score-line">
+              Presenza: ${Number(item.attendance_points || 0)} ·
+              Applicazione: ${Number(item.application_points || 0)} ·
+              Tecnico-tattico: ${Number(item.technical_points || 0)} ·
+              Resilienza: ${Number(item.resilience_points || 0)}
+            </div>
+
+            <div class="score-line">${escapeHtml(item.notes || 'Nessuna nota')}</div>
+
+            <div class="score-line" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+              <button
+                type="button"
+                class="inline-edit-score-btn"
+                data-score-id="${item.id}"
+                data-athlete-id="${athleteId}"
+                data-session-date="${date}"
+              >
+                Modifica
+              </button>
+
+              <button
+                type="button"
+                class="inline-delete-score-btn"
+                data-score-id="${item.id}"
+                data-athlete-id="${athleteId}"
+                data-session-date="${date}"
+              >
+                Elimina
+              </button>
+            </div>
+          </div>
+        `;
+      }).join('')}
+    `;
+  } catch (error) {
+    console.error(error);
+    detailsEl.innerHTML = '<p class="status-text">Errore nel caricamento dettaglio valutazioni.</p>';
+  }
 }
 
 function refreshAdminAthleteSelect() {
@@ -451,18 +569,24 @@ async function openAthleteDetails(athleteId) {
     return;
   }
 
+  if (openedSummaryAthleteId === athleteId) {
+    openedSummaryAthleteId = null;
+    renderAthletesSummary();
+    return;
+  }
+
+  openedSummaryAthleteId = athleteId;
+
   if (adminAthlete) {
     adminAthlete.value = athleteId;
   }
 
-  await loadScores();
+  renderAthletesSummary();
+  await renderInlineAthleteDetails(athleteId);
 
   if (adminMessage) {
     adminMessage.textContent = `Dettaglio valutazioni aperto per ${athlete.full_name}.`;
   }
-
-  const detailSection = adminScores?.closest('.card');
-  detailSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
 async function deleteScore(scoreId, athleteId, date) {
@@ -485,6 +609,10 @@ async function deleteScore(scoreId, athleteId, date) {
     if (adminAthlete) adminAthlete.value = athleteId;
 
     await loadScores();
+
+    if (openedSummaryAthleteId === athleteId) {
+      await renderInlineAthleteDetails(athleteId);
+    }
 
     if (adminMessage) {
       adminMessage.textContent = `Valutazione del ${labelDate(date)} eliminata correttamente.`;
@@ -525,9 +653,17 @@ async function loadAthletes() {
       athlete.last_evaluated_date = scores.length ? scores[0].session_date : '';
     }
 
+    if (openedSummaryAthleteId && !athletesCache.some((item) => item.id === openedSummaryAthleteId)) {
+      openedSummaryAthleteId = null;
+    }
+
     refreshAdminAthleteSelect();
     renderAthletesList();
     renderAthletesSummary();
+
+    if (openedSummaryAthleteId) {
+      await renderInlineAthleteDetails(openedSummaryAthleteId);
+    }
 
     if (athleteMessage) athleteMessage.textContent = '';
   } catch (error) {
@@ -752,6 +888,10 @@ async function deleteAthlete(athleteId) {
       }
     }
 
+    if (openedSummaryAthleteId === athleteId) {
+      openedSummaryAthleteId = null;
+    }
+
     editingAthleteId = null;
 
     await loadAthletes();
@@ -904,12 +1044,46 @@ document.getElementById('slug')?.addEventListener('input', (e) => {
 
 athletesSummary?.addEventListener('click', async (e) => {
   const detailsBtn = e.target.closest('.view-athlete-details-btn');
+  const insertBtn = e.target.closest('.inline-insert-score-btn');
+  const editBtn = e.target.closest('.inline-edit-score-btn');
+  const deleteBtn = e.target.closest('.inline-delete-score-btn');
 
-  if (!detailsBtn) return;
+  if (detailsBtn) {
+    const athleteId = detailsBtn.dataset.athleteId;
+    await openAthleteDetails(athleteId);
+    return;
+  }
 
-  const athleteId = detailsBtn.dataset.athleteId;
+  if (insertBtn) {
+    const athleteId = insertBtn.dataset.athleteId;
+    const date = insertBtn.dataset.sessionDate;
 
-  await openAthleteDetails(athleteId);
+    fillScoreFormFromScore(athleteId, date, null);
+    return;
+  }
+
+  if (editBtn) {
+    const athleteId = editBtn.dataset.athleteId;
+    const date = editBtn.dataset.sessionDate;
+    const scores = await loadScoresByAthleteId(athleteId);
+    const score = scores.find((item) => item.session_date === date);
+
+    if (!score) {
+      alert('Valutazione non trovata.');
+      return;
+    }
+
+    fillScoreFormFromScore(athleteId, date, score);
+    return;
+  }
+
+  if (deleteBtn) {
+    const scoreId = deleteBtn.dataset.scoreId;
+    const athleteId = deleteBtn.dataset.athleteId;
+    const date = deleteBtn.dataset.sessionDate;
+
+    await deleteScore(scoreId, athleteId, date);
+  }
 });
 
 athletesList?.addEventListener('click', (e) => {
@@ -1063,6 +1237,10 @@ scoreForm?.addEventListener('submit', async (e) => {
 
     await loadAthletes();
     await loadScores();
+
+    if (openedSummaryAthleteId === payload.athlete_id) {
+      await renderInlineAthleteDetails(payload.athlete_id);
+    }
   } catch (error) {
     console.error(error);
 
