@@ -403,6 +403,58 @@ function setEditMessage(athleteId, message, isError = false) {
   el.style.color = isError ? '#b00020' : '';
 }
 
+function fillScoreFormFromScore(athleteId, date, score = null) {
+  if (adminAthlete) adminAthlete.value = athleteId;
+  if (sessionDate) sessionDate.value = date;
+
+  const attendance = document.getElementById('attendance');
+  const application = document.getElementById('application');
+  const technical = document.getElementById('technical');
+  const resilience = document.getElementById('resilience');
+  const notes = document.getElementById('notes');
+
+  if (attendance) attendance.value = score ? Number(score.attendance_points || 0) : 10;
+  if (application) application.value = score ? Number(score.application_points || 0) : 6;
+  if (technical) technical.value = score ? Number(score.technical_points || 0) : 6;
+  if (resilience) resilience.value = score ? Number(score.resilience_points || 0) : 6;
+  if (notes) notes.value = score?.notes || '';
+
+  if (adminMessage) {
+    adminMessage.textContent = score
+      ? `Modifica caricata per il ${labelDate(date)}. Controlla i dati e salva.`
+      : `Nuova valutazione pronta per il ${labelDate(date)}. Compila i dati e salva.`;
+  }
+
+  scoreForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
+async function deleteScore(scoreId, athleteId, date) {
+  const athlete = athletesCache.find((item) => item.id === athleteId);
+  if (!athlete) {
+    alert('Atleta non trovato.');
+    return;
+  }
+
+  const confirmed = window.confirm(`Confermi eliminazione valutazione del ${labelDate(date)} per ${athlete.full_name}?`);
+  if (!confirmed) return;
+
+  try {
+    await deleteDoc(doc(db, 'scores', scoreId));
+    await syncPublicProgressForAthlete(athlete);
+    await loadAthletes();
+
+    if (adminAthlete) adminAthlete.value = athleteId;
+    await loadScores();
+
+    if (adminMessage) {
+      adminMessage.textContent = `Valutazione del ${labelDate(date)} eliminata correttamente.`;
+    }
+  } catch (error) {
+    console.error(error);
+    alert('Errore durante eliminazione valutazione.');
+  }
+}
+
 async function bootAdmin() {
   if (adminBooted) return;
   adminBooted = true;
@@ -425,11 +477,9 @@ async function loadAthletes() {
     }));
 
     for (const athlete of athletesCache) {
-      const progressSnap = await getDoc(doc(db, 'public_progress', athlete.slug));
-      const progress = progressSnap.exists() ? progressSnap.data() : null;
       const scores = await loadScoresByAthleteId(athlete.id);
 
-      athlete.total_points = progress?.total_points || 0;
+      athlete.total_points = scores.reduce((acc, score) => acc + sessionTotal(score), 0);
       athlete.presences_total = scores.filter((score) => Number(score.attendance_points || 0) > 0).length;
       athlete.last_evaluated_date = scores.length ? scores[0].session_date : '';
     }
@@ -459,24 +509,71 @@ async function loadScores() {
 
   try {
     const data = await loadScoresByAthleteId(athleteId);
+    const scoresByDate = data.reduce((acc, item) => {
+      acc[item.session_date] = item;
+      return acc;
+    }, {});
 
-    if (!data.length) {
-      adminScores.innerHTML = '<p class="status-text">Nessuna valutazione registrata.</p>';
-      return;
-    }
+    adminScores.innerHTML = STAGES.map((date) => {
+      const item = scoresByDate[date];
 
-    adminScores.innerHTML = data.map(item => `
-      <div class="score-card">
-        <strong>${labelDate(item.session_date)} · ${sessionTotal(item)} / 40 punti</strong>
-        <div class="score-line">
-          Presenza: ${item.attendance_points} ·
-          Applicazione: ${item.application_points} ·
-          Tecnico-tattico: ${item.technical_points} ·
-          Resilienza: ${item.resilience_points}
+      if (!item) {
+        return `
+          <div class="score-card" data-athlete-id="${athleteId}" data-session-date="${date}">
+            <strong>${labelDate(date)} · Non valutata</strong>
+            <div class="score-line">Nessuna valutazione registrata per questa data.</div>
+            <div class="score-line" style="margin-top:10px;">
+              <button
+                type="button"
+                class="insert-score-btn"
+                data-athlete-id="${athleteId}"
+                data-session-date="${date}"
+              >
+                Inserisci
+              </button>
+            </div>
+          </div>
+        `;
+      }
+
+      return `
+        <div
+          class="score-card"
+          data-score-id="${item.id}"
+          data-athlete-id="${athleteId}"
+          data-session-date="${date}"
+        >
+          <strong>${labelDate(date)} · ${sessionTotal(item)} / 40 punti</strong>
+          <div class="score-line">
+            Presenza: ${Number(item.attendance_points || 0)} ·
+            Applicazione: ${Number(item.application_points || 0)} ·
+            Tecnico-tattico: ${Number(item.technical_points || 0)} ·
+            Resilienza: ${Number(item.resilience_points || 0)}
+          </div>
+          <div class="score-line">${escapeHtml(item.notes || 'Nessuna nota')}</div>
+          <div class="score-line" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
+            <button
+              type="button"
+              class="edit-score-btn"
+              data-score-id="${item.id}"
+              data-athlete-id="${athleteId}"
+              data-session-date="${date}"
+            >
+              Modifica
+            </button>
+            <button
+              type="button"
+              class="delete-score-btn"
+              data-score-id="${item.id}"
+              data-athlete-id="${athleteId}"
+              data-session-date="${date}"
+            >
+              Elimina
+            </button>
+          </div>
         </div>
-        <div class="score-line">${escapeHtml(item.notes || 'Nessuna nota')}</div>
-      </div>
-    `).join('');
+      `;
+    }).join('');
 
     if (adminMessage) adminMessage.textContent = '';
   } catch (error) {
@@ -797,6 +894,43 @@ athletesList?.addEventListener('submit', async (e) => {
   const formData = new FormData(form);
 
   await updateAthleteProfile(athleteId, formData);
+});
+
+adminScores?.addEventListener('click', async (e) => {
+  const insertBtn = e.target.closest('.insert-score-btn');
+  const editBtn = e.target.closest('.edit-score-btn');
+  const deleteBtn = e.target.closest('.delete-score-btn');
+
+  if (insertBtn) {
+    const athleteId = insertBtn.dataset.athleteId;
+    const date = insertBtn.dataset.sessionDate;
+
+    fillScoreFormFromScore(athleteId, date, null);
+    return;
+  }
+
+  if (editBtn) {
+    const athleteId = editBtn.dataset.athleteId;
+    const date = editBtn.dataset.sessionDate;
+    const scores = await loadScoresByAthleteId(athleteId);
+    const score = scores.find((item) => item.session_date === date);
+
+    if (!score) {
+      alert('Valutazione non trovata.');
+      return;
+    }
+
+    fillScoreFormFromScore(athleteId, date, score);
+    return;
+  }
+
+  if (deleteBtn) {
+    const scoreId = deleteBtn.dataset.scoreId;
+    const athleteId = deleteBtn.dataset.athleteId;
+    const date = deleteBtn.dataset.sessionDate;
+
+    await deleteScore(scoreId, athleteId, date);
+  }
 });
 
 scoreForm?.addEventListener('submit', async (e) => {
