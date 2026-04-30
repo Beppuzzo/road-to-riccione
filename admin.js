@@ -9,7 +9,6 @@ import {
   collection,
   addDoc,
   getDocs,
-  getDoc,
   query,
   orderBy,
   where,
@@ -135,6 +134,7 @@ function buildStageDetails(scores = []) {
 function setAuthenticatedUI(user) {
   authCard?.classList.add('hidden');
   adminApp?.classList.remove('hidden');
+
   if (sessionInfo) {
     sessionInfo.textContent = `Sessione attiva: ${user.email}`;
   }
@@ -143,12 +143,14 @@ function setAuthenticatedUI(user) {
 function setLoggedOutUI() {
   authCard?.classList.remove('hidden');
   adminApp?.classList.add('hidden');
+
   if (authMessage) authMessage.textContent = '';
   if (sessionInfo) sessionInfo.textContent = '';
 }
 
 function loadStageOptions() {
   if (!sessionDate) return;
+
   sessionDate.innerHTML =
     '<option value="">Seleziona data</option>' +
     STAGES.map(date => `<option value="${date}">${labelDate(date)}</option>`).join('');
@@ -163,6 +165,7 @@ async function loadScoresByAthleteId(athleteId) {
   );
 
   const snapshot = await getDocs(q);
+
   return snapshot.docs.map((docSnap) => ({
     id: docSnap.id,
     ...docSnap.data()
@@ -335,7 +338,7 @@ function renderAthletesSummary() {
 
         <div style="
           display:grid;
-          grid-template-columns: minmax(180px, 1fr) minmax(140px, 220px) minmax(130px, auto) minmax(170px, auto);
+          grid-template-columns: minmax(150px, 1fr) minmax(130px, 190px) minmax(120px, auto) minmax(160px, auto) minmax(120px, 140px);
           gap:12px;
           align-items:center;
           margin-top:8px;
@@ -374,6 +377,17 @@ function renderAthletesSummary() {
           <div class="score-line">
             Ultima lezione valutata: ${lastEvaluatedDate}
           </div>
+
+          <div>
+            <button
+              type="button"
+              class="view-athlete-details-btn"
+              data-athlete-id="${a.id}"
+              style="padding:10px 12px;font-size:0.88rem;"
+            >
+              Vedi dettagli
+            </button>
+          </div>
         </div>
       </div>
     `;
@@ -399,6 +413,7 @@ function refreshAdminAthleteSelect() {
 function setEditMessage(athleteId, message, isError = false) {
   const el = document.querySelector(`.athlete-edit-message[data-athlete-id="${athleteId}"]`);
   if (!el) return;
+
   el.textContent = message || '';
   el.style.color = isError ? '#b00020' : '';
 }
@@ -428,14 +443,38 @@ function fillScoreFormFromScore(athleteId, date, score = null) {
   scoreForm?.scrollIntoView({ behavior: 'smooth', block: 'start' });
 }
 
+async function openAthleteDetails(athleteId) {
+  const athlete = athletesCache.find((item) => item.id === athleteId);
+
+  if (!athlete) {
+    alert('Atleta non trovato.');
+    return;
+  }
+
+  if (adminAthlete) {
+    adminAthlete.value = athleteId;
+  }
+
+  await loadScores();
+
+  if (adminMessage) {
+    adminMessage.textContent = `Dettaglio valutazioni aperto per ${athlete.full_name}.`;
+  }
+
+  const detailSection = adminScores?.closest('.card');
+  detailSection?.scrollIntoView({ behavior: 'smooth', block: 'start' });
+}
+
 async function deleteScore(scoreId, athleteId, date) {
   const athlete = athletesCache.find((item) => item.id === athleteId);
+
   if (!athlete) {
     alert('Atleta non trovato.');
     return;
   }
 
   const confirmed = window.confirm(`Confermi eliminazione valutazione del ${labelDate(date)} per ${athlete.full_name}?`);
+
   if (!confirmed) return;
 
   try {
@@ -444,6 +483,7 @@ async function deleteScore(scoreId, athleteId, date) {
     await loadAthletes();
 
     if (adminAthlete) adminAthlete.value = athleteId;
+
     await loadScores();
 
     if (adminMessage) {
@@ -457,6 +497,7 @@ async function deleteScore(scoreId, athleteId, date) {
 
 async function bootAdmin() {
   if (adminBooted) return;
+
   adminBooted = true;
 
   loadStageOptions();
@@ -491,6 +532,7 @@ async function loadAthletes() {
     if (athleteMessage) athleteMessage.textContent = '';
   } catch (error) {
     console.error(error);
+
     if (athleteMessage) {
       athleteMessage.textContent = 'Errore nel caricamento atleti.';
     }
@@ -504,11 +546,13 @@ async function loadScores() {
     if (adminScores) {
       adminScores.innerHTML = '<p class="status-text">Seleziona un atleta per vedere le valutazioni.</p>';
     }
+
     return;
   }
 
   try {
     const data = await loadScoresByAthleteId(athleteId);
+
     const scoresByDate = data.reduce((acc, item) => {
       acc[item.session_date] = item;
       return acc;
@@ -544,13 +588,16 @@ async function loadScores() {
           data-session-date="${date}"
         >
           <strong>${labelDate(date)} · ${sessionTotal(item)} / 40 punti</strong>
+
           <div class="score-line">
             Presenza: ${Number(item.attendance_points || 0)} ·
             Applicazione: ${Number(item.application_points || 0)} ·
             Tecnico-tattico: ${Number(item.technical_points || 0)} ·
             Resilienza: ${Number(item.resilience_points || 0)}
           </div>
+
           <div class="score-line">${escapeHtml(item.notes || 'Nessuna nota')}</div>
+
           <div class="score-line" style="display:flex;gap:8px;flex-wrap:wrap;margin-top:10px;">
             <button
               type="button"
@@ -561,6 +608,7 @@ async function loadScores() {
             >
               Modifica
             </button>
+
             <button
               type="button"
               class="delete-score-btn"
@@ -578,6 +626,7 @@ async function loadScores() {
     if (adminMessage) adminMessage.textContent = '';
   } catch (error) {
     console.error(error);
+
     if (adminMessage) {
       adminMessage.textContent = 'Errore nel caricamento valutazioni.';
     }
@@ -624,6 +673,7 @@ async function updateAthleteProfile(athleteId, formData) {
 
   try {
     const slugInUse = await slugAlreadyUsed(slug, athleteId);
+
     if (slugInUse) {
       setEditMessage(athleteId, 'Slug già usato. Correggi nome/cognome.', true);
       return;
@@ -654,6 +704,7 @@ async function updateAthleteProfile(athleteId, formData) {
     await syncPublicProgressForAthlete(updatedAthlete);
 
     editingAthleteId = null;
+
     await loadAthletes();
 
     if (adminAthlete?.value === athleteId) {
@@ -671,9 +722,11 @@ async function updateAthleteProfile(athleteId, formData) {
 
 async function deleteAthlete(athleteId) {
   const athlete = athletesCache.find(a => a.id === athleteId);
+
   if (!athlete) return;
 
   const confirmed = window.confirm(`Confermi eliminazione atleta "${athlete.full_name}"?`);
+
   if (!confirmed) return;
 
   try {
@@ -693,12 +746,14 @@ async function deleteAthlete(athleteId) {
 
     if (adminAthlete?.value === athleteId) {
       adminAthlete.value = '';
+
       if (adminScores) {
         adminScores.innerHTML = '<p class="status-text">Seleziona un atleta per vedere le valutazioni.</p>';
       }
     }
 
     editingAthleteId = null;
+
     await loadAthletes();
 
     if (athleteMessage) {
@@ -712,6 +767,7 @@ async function deleteAthlete(athleteId) {
 
 loginForm?.addEventListener('submit', async (e) => {
   e.preventDefault();
+
   if (authMessage) authMessage.textContent = 'Accesso in corso...';
 
   const email = document.getElementById('email')?.value.trim();
@@ -719,9 +775,11 @@ loginForm?.addEventListener('submit', async (e) => {
 
   try {
     await signInWithEmailAndPassword(auth, email, password);
+
     if (authMessage) authMessage.textContent = 'Accesso effettuato.';
   } catch (error) {
     console.error(error);
+
     if (authMessage) {
       authMessage.textContent = 'Login non riuscito. Controlla email e password.';
     }
@@ -742,6 +800,7 @@ refreshAthletesBtn?.addEventListener('click', async () => {
     await loadAthletes();
     await syncAllPublicProgress();
     await loadScores();
+
     alert('Elenco atleti aggiornato correttamente.');
   } catch (error) {
     console.error(error);
@@ -762,6 +821,7 @@ athleteForm?.addEventListener('submit', async (e) => {
     if (athleteMessage) {
       athleteMessage.textContent = 'Inserisci nome atleta e slug valido.';
     }
+
     return;
   }
 
@@ -769,6 +829,7 @@ athleteForm?.addEventListener('submit', async (e) => {
     const athletesRef = collection(db, 'athletes');
 
     const slugInUse = await slugAlreadyUsed(slug);
+
     if (slugInUse) {
       athleteMessage.textContent = 'Slug già usato. Scegline uno diverso.';
       return;
@@ -816,6 +877,7 @@ athleteForm?.addEventListener('submit', async (e) => {
     athleteForm.reset();
 
     const slugField = document.getElementById('slug');
+
     if (slugField) delete slugField.dataset.touched;
 
     await loadAthletes();
@@ -829,6 +891,7 @@ adminAthlete?.addEventListener('change', loadScores);
 
 document.getElementById('fullName')?.addEventListener('input', (e) => {
   const currentSlug = document.getElementById('slug');
+
   if (currentSlug && !currentSlug.dataset.touched) {
     currentSlug.value = slugify(e.target.value);
   }
@@ -837,6 +900,16 @@ document.getElementById('fullName')?.addEventListener('input', (e) => {
 document.getElementById('slug')?.addEventListener('input', (e) => {
   e.target.dataset.touched = 'true';
   e.target.value = slugify(e.target.value);
+});
+
+athletesSummary?.addEventListener('click', async (e) => {
+  const detailsBtn = e.target.closest('.view-athlete-details-btn');
+
+  if (!detailsBtn) return;
+
+  const athleteId = detailsBtn.dataset.athleteId;
+
+  await openAthleteDetails(athleteId);
 });
 
 athletesList?.addEventListener('click', (e) => {
@@ -862,10 +935,12 @@ athletesList?.addEventListener('click', (e) => {
     const athleteId = generatePinBtn.dataset.athleteId;
     const formEl = document.querySelector(`.edit-athlete-form[data-athlete-id="${athleteId}"]`);
     const pinInput = formEl?.querySelector('input[name="pin"]');
+
     if (pinInput) {
       pinInput.value = generatePin();
       pinInput.dispatchEvent(new Event('input', { bubbles: true }));
     }
+
     return;
   }
 
@@ -877,6 +952,7 @@ athletesList?.addEventListener('click', (e) => {
 
 athletesList?.addEventListener('input', (e) => {
   const target = e.target;
+
   if (!(target instanceof HTMLInputElement)) return;
 
   if (target.name === 'pin') {
@@ -886,6 +962,7 @@ athletesList?.addEventListener('input', (e) => {
 
 athletesList?.addEventListener('submit', async (e) => {
   const form = e.target.closest('.edit-athlete-form');
+
   if (!form) return;
 
   e.preventDefault();
@@ -961,6 +1038,7 @@ scoreForm?.addEventListener('submit', async (e) => {
     }, { merge: true });
 
     const athlete = athletesCache.find((item) => item.id === payload.athlete_id);
+
     if (athlete) {
       await syncPublicProgressForAthlete(athlete);
     }
@@ -987,6 +1065,7 @@ scoreForm?.addEventListener('submit', async (e) => {
     await loadScores();
   } catch (error) {
     console.error(error);
+
     if (adminMessage) {
       adminMessage.textContent = 'Errore durante il salvataggio.';
     }
